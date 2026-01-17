@@ -1,5 +1,4 @@
 import { supabase } from "@/integrations/supabase/client";
-import bcrypt from "bcryptjs";
 
 export interface Staff {
   id: string;
@@ -8,70 +7,43 @@ export interface Staff {
   role: "admin" | "manager" | "associate";
   department_id: string | null;
   is_online: boolean;
-  last_seen: string;
-  created_at: string;
+  last_seen?: string;
+  created_at?: string;
 }
 
-// Simple password comparison for demo (in production, use proper bcrypt on server)
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  // For the seeded user with hash '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZRGdjGj/n3.aOe/aOcBT1fGJHYKDS'
-  // This is bcrypt hash of '123'
-  if (hash === '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZRGdjGj/n3.aOe/aOcBT1fGJHYKDS' && password === '123') {
-    return true;
+export async function loginStaff(
+  username: string,
+  password: string
+): Promise<{ staff: Staff | null; error: string | null }> {
+  try {
+    const { data, error } = await supabase.functions.invoke("staff-auth", {
+      body: { action: "login", username, password },
+    });
+
+    if (error) {
+      console.error("Login error:", error);
+      return { staff: null, error: "Login failed" };
+    }
+
+    if (data.error) {
+      return { staff: null, error: data.error };
+    }
+
+    return { staff: data.staff, error: null };
+  } catch (err) {
+    console.error("Login exception:", err);
+    return { staff: null, error: "An error occurred during login" };
   }
-  return bcrypt.compare(password, hash);
-}
-
-export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 10);
-}
-
-export async function loginStaff(username: string, password: string): Promise<{ staff: Staff | null; error: string | null }> {
-  const { data, error } = await supabase
-    .from("staff")
-    .select("*")
-    .eq("username", username)
-    .maybeSingle();
-
-  if (error) {
-    return { staff: null, error: "Login failed. Please try again." };
-  }
-
-  if (!data) {
-    return { staff: null, error: "Invalid username or password." };
-  }
-
-  const isValid = await verifyPassword(password, data.password_hash);
-  
-  if (!isValid) {
-    return { staff: null, error: "Invalid username or password." };
-  }
-
-  // Update online status
-  await supabase
-    .from("staff")
-    .update({ is_online: true, last_seen: new Date().toISOString() })
-    .eq("id", data.id);
-
-  const staff: Staff = {
-    id: data.id,
-    username: data.username,
-    display_name: data.display_name,
-    role: data.role,
-    department_id: data.department_id,
-    is_online: true,
-    last_seen: new Date().toISOString(),
-    created_at: data.created_at,
-  };
-
-  return { staff, error: null };
 }
 
 export async function logoutStaff(staffId: string): Promise<void> {
-  await supabase
-    .from("staff")
-    .update({ is_online: false, last_seen: new Date().toISOString() })
-    .eq("id", staffId);
+  try {
+    await supabase.functions.invoke("staff-auth", {
+      body: { action: "logout", staffId },
+    });
+  } catch (err) {
+    console.error("Logout error:", err);
+  }
 }
 
 export async function createStaffMember(
@@ -82,39 +54,92 @@ export async function createStaffMember(
   departmentId: string | null,
   createdBy: string
 ): Promise<{ staff: Staff | null; error: string | null }> {
-  const passwordHash = await hashPassword(password);
+  try {
+    const { data, error } = await supabase.functions.invoke("staff-auth", {
+      body: {
+        action: "create",
+        username,
+        password,
+        displayName,
+        role,
+        departmentId,
+        createdBy,
+      },
+    });
 
-  const { data, error } = await supabase
-    .from("staff")
-    .insert({
-      username,
-      password_hash: passwordHash,
-      display_name: displayName,
-      role,
-      department_id: departmentId,
-      created_by: createdBy,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    if (error.code === "23505") {
-      return { staff: null, error: "Username already exists." };
+    if (error) {
+      console.error("Create staff error:", error);
+      return { staff: null, error: "Failed to create staff member" };
     }
-    return { staff: null, error: "Failed to create staff member." };
-  }
 
-  return {
-    staff: {
-      id: data.id,
-      username: data.username,
-      display_name: data.display_name,
-      role: data.role,
-      department_id: data.department_id,
-      is_online: data.is_online,
-      last_seen: data.last_seen,
-      created_at: data.created_at,
-    },
-    error: null,
-  };
+    if (data.error) {
+      return { staff: null, error: data.error };
+    }
+
+    return { staff: data.staff, error: null };
+  } catch (err) {
+    console.error("Create staff exception:", err);
+    return { staff: null, error: "An error occurred" };
+  }
+}
+
+export async function listStaffMembers(): Promise<{
+  staff: Staff[];
+  error: string | null;
+}> {
+  try {
+    const { data, error } = await supabase.functions.invoke("staff-auth", {
+      body: { action: "list" },
+    });
+
+    if (error) {
+      console.error("List staff error:", error);
+      return { staff: [], error: "Failed to fetch staff" };
+    }
+
+    return { staff: data.staff || [], error: null };
+  } catch (err) {
+    console.error("List staff exception:", err);
+    return { staff: [], error: "An error occurred" };
+  }
+}
+
+export async function updateStaffMember(
+  staffId: string,
+  updates: Partial<Staff>
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const { data, error } = await supabase.functions.invoke("staff-auth", {
+      body: { action: "update", staffId, updates },
+    });
+
+    if (error || data.error) {
+      return { success: false, error: data?.error || "Failed to update" };
+    }
+
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("Update staff exception:", err);
+    return { success: false, error: "An error occurred" };
+  }
+}
+
+export async function deleteStaffMember(
+  staffId: string,
+  requesterId: string
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const { data, error } = await supabase.functions.invoke("staff-auth", {
+      body: { action: "delete", staffId, requesterId },
+    });
+
+    if (error || data.error) {
+      return { success: false, error: data?.error || "Failed to delete" };
+    }
+
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("Delete staff exception:", err);
+    return { success: false, error: "An error occurred" };
+  }
 }

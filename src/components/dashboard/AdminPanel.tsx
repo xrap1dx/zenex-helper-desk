@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -27,8 +28,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Trash2, UserPlus, Loader2 } from "lucide-react";
-import { createStaffMember } from "@/lib/auth";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Plus, Trash2, UserPlus, Loader2, Info, Shield, Users, Headphones } from "lucide-react";
+import { createStaffMember, listStaffMembers, updateStaffMember, deleteStaffMember } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 
 interface StaffMember {
@@ -39,13 +45,57 @@ interface StaffMember {
   department_id: string | null;
   is_online: boolean;
   created_at: string;
-  department?: { name: string } | null;
+  departments?: { name: string } | null;
 }
 
 interface Department {
   id: string;
   name: string;
 }
+
+interface RoleInfo {
+  name: string;
+  icon: React.ReactNode;
+  description: string;
+  permissions: string[];
+}
+
+const roleDetails: Record<string, RoleInfo> = {
+  admin: {
+    name: "Admin",
+    icon: <Shield className="h-4 w-4" />,
+    description: "Full system access with user management capabilities",
+    permissions: [
+      "Manage all staff accounts",
+      "Assign roles and departments",
+      "View all tickets across departments",
+      "Access system settings",
+      "All Manager permissions",
+    ],
+  },
+  manager: {
+    name: "Manager",
+    icon: <Users className="h-4 w-4" />,
+    description: "Team lead with escalation handling",
+    permissions: [
+      "Receive escalated tickets from Associates",
+      "Transfer tickets between departments",
+      "View department analytics",
+      "All Associate permissions",
+    ],
+  },
+  associate: {
+    name: "Associate",
+    icon: <Headphones className="h-4 w-4" />,
+    description: "Front-line support agent",
+    permissions: [
+      "Respond to customer chats",
+      "Close resolved tickets",
+      "Refer tickets to Managers",
+      "Transfer to other departments",
+    ],
+  },
+};
 
 export function AdminPanel() {
   const { staff: currentStaff } = useStaff();
@@ -59,7 +109,7 @@ export function AdminPanel() {
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
-  const [newRole, setNewRole] = useState<"admin" | "manager" | "associate">("associate");
+  const [selectedRoles, setSelectedRoles] = useState<string[]>(["associate"]);
   const [newDepartment, setNewDepartment] = useState<string>("");
 
   useEffect(() => {
@@ -68,16 +118,33 @@ export function AdminPanel() {
   }, []);
 
   const fetchStaff = async () => {
-    const { data } = await supabase
-      .from("staff")
-      .select(`*, department:departments(name)`)
-      .order("created_at", { ascending: false });
-    if (data) setStaffMembers(data as StaffMember[]);
+    const { staff, error } = await listStaffMembers();
+    if (!error) {
+      setStaffMembers(staff as StaffMember[]);
+    }
   };
 
   const fetchDepartments = async () => {
     const { data } = await supabase.from("departments").select("*");
     if (data) setDepartments(data);
+  };
+
+  const handleRoleToggle = (role: string) => {
+    setSelectedRoles((prev) => {
+      if (prev.includes(role)) {
+        // Don't allow removing the last role
+        if (prev.length === 1) return prev;
+        return prev.filter((r) => r !== role);
+      } else {
+        return [...prev, role];
+      }
+    });
+  };
+
+  const getHighestRole = (roles: string[]): "admin" | "manager" | "associate" => {
+    if (roles.includes("admin")) return "admin";
+    if (roles.includes("manager")) return "manager";
+    return "associate";
   };
 
   const handleCreateStaff = async () => {
@@ -91,11 +158,14 @@ export function AdminPanel() {
     }
 
     setIsLoading(true);
+    // Use the highest role for the main role field
+    const primaryRole = getHighestRole(selectedRoles);
+    
     const { error } = await createStaffMember(
       newUsername,
       newPassword,
       newDisplayName,
-      newRole,
+      primaryRole,
       newDepartment || null,
       currentStaff.id
     );
@@ -119,7 +189,9 @@ export function AdminPanel() {
   };
 
   const handleDeleteStaff = async (staffId: string) => {
-    if (staffId === currentStaff?.id) {
+    if (!currentStaff) return;
+    
+    if (staffId === currentStaff.id) {
       toast({
         title: "Error",
         description: "You cannot delete your own account.",
@@ -128,11 +200,11 @@ export function AdminPanel() {
       return;
     }
 
-    const { error } = await supabase.from("staff").delete().eq("id", staffId);
+    const { error } = await deleteStaffMember(staffId, currentStaff.id);
     if (error) {
       toast({
         title: "Error",
-        description: "Failed to delete staff member.",
+        description: error,
         variant: "destructive",
       });
     } else {
@@ -145,10 +217,7 @@ export function AdminPanel() {
   };
 
   const handleUpdateRole = async (staffId: string, role: "admin" | "manager" | "associate") => {
-    const { error } = await supabase
-      .from("staff")
-      .update({ role })
-      .eq("id", staffId);
+    const { error } = await updateStaffMember(staffId, { role });
     if (!error) {
       toast({
         title: "Success",
@@ -159,10 +228,9 @@ export function AdminPanel() {
   };
 
   const handleUpdateDepartment = async (staffId: string, departmentId: string) => {
-    const { error } = await supabase
-      .from("staff")
-      .update({ department_id: departmentId || null })
-      .eq("id", staffId);
+    const { error } = await updateStaffMember(staffId, { 
+      department_id: departmentId || null 
+    } as any);
     if (!error) {
       toast({
         title: "Success",
@@ -176,7 +244,7 @@ export function AdminPanel() {
     setNewUsername("");
     setNewPassword("");
     setNewDisplayName("");
-    setNewRole("associate");
+    setSelectedRoles(["associate"]);
     setNewDepartment("");
   };
 
@@ -211,7 +279,7 @@ export function AdminPanel() {
                 <span className="text-primary-foreground">Add Staff</span>
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle>Add New Staff Member</DialogTitle>
               </DialogHeader>
@@ -241,18 +309,57 @@ export function AdminPanel() {
                     onChange={(e) => setNewDisplayName(e.target.value)}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>Role</Label>
-                  <Select value={newRole} onValueChange={(v) => setNewRole(v as any)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="associate">Associate</SelectItem>
-                      <SelectItem value="manager">Manager</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="space-y-3">
+                  <Label className="flex items-center gap-2">
+                    Roles
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        <p>You can assign multiple roles. The highest role determines primary permissions.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </Label>
+                  <div className="space-y-3">
+                    {Object.entries(roleDetails).map(([key, role]) => (
+                      <div
+                        key={key}
+                        className={`p-3 rounded-lg border transition-all cursor-pointer ${
+                          selectedRoles.includes(key)
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-muted-foreground"
+                        }`}
+                        onClick={() => handleRoleToggle(key)}
+                      >
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            checked={selectedRoles.includes(key)}
+                            onCheckedChange={() => handleRoleToggle(key)}
+                            className="mt-0.5"
+                          />
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className={getRoleBadgeColor(key) + " p-1 rounded"}>
+                                {role.icon}
+                              </span>
+                              <span className="font-medium">{role.name}</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {role.description}
+                            </p>
+                            <ul className="mt-2 space-y-0.5">
+                              {role.permissions.slice(0, 3).map((perm, i) => (
+                                <li key={i} className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <span className="text-primary">•</span> {perm}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Department</Label>
@@ -284,6 +391,28 @@ export function AdminPanel() {
               </div>
             </DialogContent>
           </Dialog>
+        </div>
+
+        {/* Role Legend */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {Object.entries(roleDetails).map(([key, role]) => (
+            <div key={key} className="p-4 rounded-xl border border-border bg-card">
+              <div className="flex items-center gap-2 mb-2">
+                <span className={getRoleBadgeColor(key) + " p-1.5 rounded"}>
+                  {role.icon}
+                </span>
+                <h3 className="font-semibold">{role.name}</h3>
+              </div>
+              <p className="text-xs text-muted-foreground mb-2">{role.description}</p>
+              <ul className="space-y-1">
+                {role.permissions.map((perm, i) => (
+                  <li key={i} className="text-xs text-muted-foreground flex items-center gap-1">
+                    <span className="text-primary">✓</span> {perm}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
 
         {/* Staff Table */}
@@ -321,18 +450,23 @@ export function AdminPanel() {
                       onValueChange={(v) => handleUpdateRole(member.id, v as any)}
                       disabled={member.id === currentStaff?.id}
                     >
-                      <SelectTrigger className="w-[120px]">
-                        <Badge
-                          variant="outline"
-                          className={getRoleBadgeColor(member.role)}
-                        >
-                          {member.role}
-                        </Badge>
+                      <SelectTrigger className="w-[140px]">
+                        <div className="flex items-center gap-2">
+                          <span className={getRoleBadgeColor(member.role) + " p-1 rounded"}>
+                            {roleDetails[member.role]?.icon}
+                          </span>
+                          <span className="capitalize">{member.role}</span>
+                        </div>
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="associate">Associate</SelectItem>
-                        <SelectItem value="manager">Manager</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
+                        {Object.entries(roleDetails).map(([key, role]) => (
+                          <SelectItem key={key} value={key}>
+                            <div className="flex items-center gap-2">
+                              {role.icon}
+                              <span>{role.name}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </TableCell>
