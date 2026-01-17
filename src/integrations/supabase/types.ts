@@ -72,6 +72,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "staff_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "messages_ticket_id_fkey"
             columns: ["ticket_id"]
             isOneToOne: false
@@ -123,6 +130,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "staff_public"
             referencedColumns: ["id"]
           },
           {
@@ -186,6 +200,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "tickets_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "staff_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "tickets_department_id_fkey"
             columns: ["department_id"]
             isOneToOne: false
@@ -199,14 +220,92 @@ export type Database = {
             referencedRelation: "staff"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "tickets_referred_to_fkey"
+            columns: ["referred_to"]
+            isOneToOne: false
+            referencedRelation: "staff_public"
+            referencedColumns: ["id"]
+          },
         ]
       }
     }
     Views: {
-      [_ in never]: never
+      staff_public: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          department_id: string | null
+          display_name: string | null
+          id: string | null
+          is_online: boolean | null
+          last_seen: string | null
+          role: Database["public"]["Enums"]["staff_role"] | null
+          username: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          department_id?: string | null
+          display_name?: string | null
+          id?: string | null
+          is_online?: boolean | null
+          last_seen?: string | null
+          role?: Database["public"]["Enums"]["staff_role"] | null
+          username?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          department_id?: string | null
+          display_name?: string | null
+          id?: string | null
+          is_online?: boolean | null
+          last_seen?: string | null
+          role?: Database["public"]["Enums"]["staff_role"] | null
+          username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "staff_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
-      [_ in never]: never
+      is_ticket_owner: {
+        Args: { session_id: string; ticket_id: string }
+        Returns: boolean
+      }
+      is_valid_staff_login: {
+        Args: { p_password_hash: string; p_username: string }
+        Returns: {
+          department_id: string
+          display_name: string
+          id: string
+          is_online: boolean
+          role: string
+          username: string
+        }[]
+      }
     }
     Enums: {
       staff_role: "admin" | "manager" | "associate"
