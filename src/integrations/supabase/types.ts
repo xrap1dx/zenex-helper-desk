@@ -366,6 +366,7 @@ export type Database = {
     }
     Functions: {
       crypt_password: { Args: { password_text: string }; Returns: string }
+      hash_bcrypt_password: { Args: { password_text: string }; Returns: string }
       is_ticket_owner: {
         Args: { session_id: string; ticket_id: string }
         Returns: boolean
@@ -388,6 +389,10 @@ export type Database = {
           id: string
           is_online: boolean
         }[]
+      }
+      verify_bcrypt_password: {
+        Args: { password_attempt: string; password_hash: string }
+        Returns: boolean
       }
     }
     Enums: {
