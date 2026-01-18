@@ -3,7 +3,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useStaff } from "@/contexts/StaffContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
   Send,
@@ -12,6 +11,7 @@ import {
   XCircle,
   User,
   MessageSquare,
+  UserCheck,
 } from "lucide-react";
 import {
   Select,
@@ -19,7 +19,10 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectGroup,
+  SelectLabel,
 } from "@/components/ui/select";
+import { listManagers } from "@/lib/auth";
 
 interface Message {
   id: string;
@@ -36,12 +39,19 @@ interface Ticket {
   status: string;
   department_id: string;
   assigned_to: string | null;
+  referred_to: string | null;
   department?: { name: string };
 }
 
 interface Department {
   id: string;
   name: string;
+}
+
+interface Manager {
+  id: string;
+  display_name: string;
+  is_online: boolean;
 }
 
 interface TicketChatProps {
@@ -54,6 +64,7 @@ export function TicketChat({ ticketId }: TicketChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [managers, setManagers] = useState<Manager[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -62,6 +73,7 @@ export function TicketChat({ ticketId }: TicketChatProps) {
       fetchTicket();
       fetchMessages();
       fetchDepartments();
+      fetchManagers();
 
       const channel = supabase
         .channel(`ticket-chat:${ticketId}`)
@@ -101,7 +113,7 @@ export function TicketChat({ ticketId }: TicketChatProps) {
     if (!ticketId) return;
     const { data } = await supabase
       .from("messages")
-      .select(`*, staff:staff(display_name)`)
+      .select(`*, staff:staff_public(display_name)`)
       .eq("ticket_id", ticketId)
       .order("created_at", { ascending: true });
     if (data) setMessages(data as Message[]);
@@ -110,6 +122,11 @@ export function TicketChat({ ticketId }: TicketChatProps) {
   const fetchDepartments = async () => {
     const { data } = await supabase.from("departments").select("*");
     if (data) setDepartments(data);
+  };
+
+  const fetchManagers = async () => {
+    const { managers: mgrs } = await listManagers();
+    setManagers(mgrs);
   };
 
   const sendMessage = async () => {
@@ -148,12 +165,25 @@ export function TicketChat({ ticketId }: TicketChatProps) {
     fetchTicket();
   };
 
-  const transferTicket = async (departmentId: string) => {
+  const transferTicket = async (target: string) => {
     if (!ticketId) return;
-    await supabase
-      .from("tickets")
-      .update({ department_id: departmentId, assigned_to: null })
-      .eq("id", ticketId);
+    
+    // Check if it's a manager ID or department ID
+    const isManager = managers.some(m => m.id === target);
+    
+    if (isManager) {
+      // Refer to manager
+      await supabase
+        .from("tickets")
+        .update({ referred_to: target, assigned_to: target })
+        .eq("id", ticketId);
+    } else {
+      // Transfer to department
+      await supabase
+        .from("tickets")
+        .update({ department_id: target, assigned_to: null, referred_to: null })
+        .eq("id", ticketId);
+    }
     fetchTicket();
   };
 
@@ -194,18 +224,42 @@ export function TicketChat({ ticketId }: TicketChatProps) {
             </div>
             <div className="flex items-center gap-2">
               <Select onValueChange={transferTicket}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-[200px]">
                   <ArrowRight className="h-4 w-4 mr-2" />
-                  Transfer
+                  Transfer / Refer
                 </SelectTrigger>
                 <SelectContent>
-                  {departments
-                    .filter((d) => d.id !== ticket.department_id)
-                    .map((dept) => (
-                      <SelectItem key={dept.id} value={dept.id}>
-                        {dept.name}
-                      </SelectItem>
-                    ))}
+                  <SelectGroup>
+                    <SelectLabel className="flex items-center gap-2">
+                      <ArrowRight className="h-3 w-3" />
+                      Departments
+                    </SelectLabel>
+                    {departments
+                      .filter((d) => d.id !== ticket.department_id)
+                      .map((dept) => (
+                        <SelectItem key={dept.id} value={dept.id}>
+                          {dept.name}
+                        </SelectItem>
+                      ))}
+                  </SelectGroup>
+                  {managers.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel className="flex items-center gap-2">
+                        <UserCheck className="h-3 w-3" />
+                        Managers
+                      </SelectLabel>
+                      {managers
+                        .filter((m) => m.id !== staff?.id)
+                        .map((mgr) => (
+                          <SelectItem key={mgr.id} value={mgr.id}>
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full ${mgr.is_online ? "bg-green-500" : "bg-muted-foreground"}`} />
+                              {mgr.display_name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                    </SelectGroup>
+                  )}
                 </SelectContent>
               </Select>
               <Button

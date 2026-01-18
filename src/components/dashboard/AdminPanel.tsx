@@ -34,7 +34,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Plus, Trash2, UserPlus, Loader2, Info, Shield, Users, Headphones } from "lucide-react";
-import { createStaffMember, listStaffMembers, updateStaffMember, deleteStaffMember } from "@/lib/auth";
+import { createStaffMember, listStaffMembers, updateStaffMember, updateStaffDepartments, deleteStaffMember } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 
 interface StaffMember {
@@ -42,10 +42,9 @@ interface StaffMember {
   username: string;
   display_name: string;
   role: "admin" | "manager" | "associate";
-  department_id: string | null;
+  departments: { id: string; name: string }[];
   is_online: boolean;
   created_at: string;
-  departments?: { name: string } | null;
 }
 
 interface Department {
@@ -79,8 +78,9 @@ const roleDetails: Record<string, RoleInfo> = {
     description: "Team lead with escalation handling",
     permissions: [
       "Receive escalated tickets from Associates",
+      "Respond to customer chats",
       "Transfer tickets between departments",
-      "View department analytics",
+      "Close resolved tickets",
       "All Associate permissions",
     ],
   },
@@ -92,7 +92,7 @@ const roleDetails: Record<string, RoleInfo> = {
       "Respond to customer chats",
       "Close resolved tickets",
       "Refer tickets to Managers",
-      "Transfer to other departments",
+      "Transfer to any department",
     ],
   },
 };
@@ -109,8 +109,8 @@ export function AdminPanel() {
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
-  const [selectedRoles, setSelectedRoles] = useState<string[]>(["associate"]);
-  const [newDepartment, setNewDepartment] = useState<string>("");
+  const [selectedRole, setSelectedRole] = useState<string>("associate");
+  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
 
   useEffect(() => {
     fetchStaff();
@@ -129,22 +129,14 @@ export function AdminPanel() {
     if (data) setDepartments(data);
   };
 
-  const handleRoleToggle = (role: string) => {
-    setSelectedRoles((prev) => {
-      if (prev.includes(role)) {
-        // Don't allow removing the last role
-        if (prev.length === 1) return prev;
-        return prev.filter((r) => r !== role);
+  const handleDepartmentToggle = (deptId: string) => {
+    setSelectedDepartments((prev) => {
+      if (prev.includes(deptId)) {
+        return prev.filter((d) => d !== deptId);
       } else {
-        return [...prev, role];
+        return [...prev, deptId];
       }
     });
-  };
-
-  const getHighestRole = (roles: string[]): "admin" | "manager" | "associate" => {
-    if (roles.includes("admin")) return "admin";
-    if (roles.includes("manager")) return "manager";
-    return "associate";
   };
 
   const handleCreateStaff = async () => {
@@ -158,15 +150,13 @@ export function AdminPanel() {
     }
 
     setIsLoading(true);
-    // Use the highest role for the main role field
-    const primaryRole = getHighestRole(selectedRoles);
     
     const { error } = await createStaffMember(
       newUsername,
       newPassword,
       newDisplayName,
-      primaryRole,
-      newDepartment || null,
+      selectedRole as "admin" | "manager" | "associate",
+      selectedDepartments,
       currentStaff.id
     );
 
@@ -227,14 +217,24 @@ export function AdminPanel() {
     }
   };
 
-  const handleUpdateDepartment = async (staffId: string, departmentId: string) => {
-    const { error } = await updateStaffMember(staffId, { 
-      department_id: departmentId || null 
-    } as any);
+  const handleUpdateDepartments = async (staffId: string, deptId: string, add: boolean) => {
+    const member = staffMembers.find(m => m.id === staffId);
+    if (!member) return;
+
+    const currentDeptIds = member.departments.map(d => d.id);
+    let newDeptIds: string[];
+
+    if (add) {
+      newDeptIds = [...currentDeptIds, deptId];
+    } else {
+      newDeptIds = currentDeptIds.filter(id => id !== deptId);
+    }
+
+    const { error } = await updateStaffDepartments(staffId, newDeptIds);
     if (!error) {
       toast({
         title: "Success",
-        description: "Department updated successfully.",
+        description: "Departments updated successfully.",
       });
       fetchStaff();
     }
@@ -244,8 +244,8 @@ export function AdminPanel() {
     setNewUsername("");
     setNewPassword("");
     setNewDisplayName("");
-    setSelectedRoles(["associate"]);
-    setNewDepartment("");
+    setSelectedRole("associate");
+    setSelectedDepartments([]);
   };
 
   const getRoleBadgeColor = (role: string) => {
@@ -279,7 +279,7 @@ export function AdminPanel() {
                 <span className="text-primary-foreground">Add Staff</span>
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-lg">
+            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Add New Staff Member</DialogTitle>
               </DialogHeader>
@@ -311,13 +311,13 @@ export function AdminPanel() {
                 </div>
                 <div className="space-y-3">
                   <Label className="flex items-center gap-2">
-                    Roles
+                    Role
                     <Tooltip>
                       <TooltipTrigger>
                         <Info className="h-3.5 w-3.5 text-muted-foreground" />
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs">
-                        <p>You can assign multiple roles. The highest role determines primary permissions.</p>
+                        <p>Each staff member has one role that determines their permissions.</p>
                       </TooltipContent>
                     </Tooltip>
                   </Label>
@@ -326,18 +326,18 @@ export function AdminPanel() {
                       <div
                         key={key}
                         className={`p-3 rounded-lg border transition-all cursor-pointer ${
-                          selectedRoles.includes(key)
+                          selectedRole === key
                             ? "border-primary bg-primary/5"
                             : "border-border hover:border-muted-foreground"
                         }`}
-                        onClick={() => handleRoleToggle(key)}
+                        onClick={() => setSelectedRole(key)}
                       >
                         <div className="flex items-start gap-3">
-                          <Checkbox
-                            checked={selectedRoles.includes(key)}
-                            onCheckedChange={() => handleRoleToggle(key)}
-                            className="mt-0.5"
-                          />
+                          <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                            selectedRole === key ? "border-primary" : "border-muted-foreground"
+                          }`}>
+                            {selectedRole === key && <div className="w-2 h-2 rounded-full bg-primary" />}
+                          </div>
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
                               <span className={getRoleBadgeColor(key) + " p-1 rounded"}>
@@ -361,20 +361,37 @@ export function AdminPanel() {
                     ))}
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Department</Label>
-                  <Select value={newDepartment} onValueChange={setNewDepartment}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select department" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {departments.map((dept) => (
-                        <SelectItem key={dept.id} value={dept.id}>
-                          {dept.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="space-y-3">
+                  <Label className="flex items-center gap-2">
+                    Departments
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        <p>Staff can be assigned to multiple departments.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </Label>
+                  <div className="space-y-2">
+                    {departments.map((dept) => (
+                      <div
+                        key={dept.id}
+                        className={`p-3 rounded-lg border transition-all cursor-pointer flex items-center gap-3 ${
+                          selectedDepartments.includes(dept.id)
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-muted-foreground"
+                        }`}
+                        onClick={() => handleDepartmentToggle(dept.id)}
+                      >
+                        <Checkbox
+                          checked={selectedDepartments.includes(dept.id)}
+                          onCheckedChange={() => handleDepartmentToggle(dept.id)}
+                        />
+                        <span className="font-medium">{dept.name}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 <Button
                   className="w-full gradient-bg"
@@ -423,7 +440,7 @@ export function AdminPanel() {
                 <TableHead>Staff Member</TableHead>
                 <TableHead>Username</TableHead>
                 <TableHead>Role</TableHead>
-                <TableHead>Department</TableHead>
+                <TableHead>Departments</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-[100px]">Actions</TableHead>
               </TableRow>
@@ -447,7 +464,7 @@ export function AdminPanel() {
                   <TableCell>
                     <Select
                       value={member.role}
-                      onValueChange={(v) => handleUpdateRole(member.id, v as any)}
+                      onValueChange={(v) => handleUpdateRole(member.id, v as "admin" | "manager" | "associate")}
                       disabled={member.id === currentStaff?.id}
                     >
                       <SelectTrigger className="w-[140px]">
@@ -471,27 +488,42 @@ export function AdminPanel() {
                     </Select>
                   </TableCell>
                   <TableCell>
-                    <Select
-                      value={member.department_id || ""}
-                      onValueChange={(v) => handleUpdateDepartment(member.id, v)}
-                    >
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="No department" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {departments.map((dept) => (
-                          <SelectItem key={dept.id} value={dept.id}>
-                            {dept.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex flex-wrap gap-1">
+                      {member.departments?.length > 0 ? (
+                        member.departments.map((dept) => (
+                          <Badge
+                            key={dept.id}
+                            variant="secondary"
+                            className="text-xs cursor-pointer hover:bg-destructive/20"
+                            onClick={() => handleUpdateDepartments(member.id, dept.id, false)}
+                          >
+                            {dept.name} ×
+                          </Badge>
+                        ))
+                      ) : (
+                        <span className="text-muted-foreground text-sm">No departments</span>
+                      )}
+                      <Select onValueChange={(v) => handleUpdateDepartments(member.id, v, true)}>
+                        <SelectTrigger className="w-8 h-6 p-0 border-dashed">
+                          <Plus className="h-3 w-3" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {departments
+                            .filter((d) => !member.departments?.some((md) => md.id === d.id))
+                            .map((dept) => (
+                              <SelectItem key={dept.id} value={dept.id}>
+                                {dept.name}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <div
                         className={`w-2 h-2 rounded-full ${
-                          member.is_online ? "bg-green-400" : "bg-muted-foreground"
+                          member.is_online ? "bg-green-500" : "bg-muted-foreground"
                         }`}
                       />
                       <span className="text-sm text-muted-foreground">

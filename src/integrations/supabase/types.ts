@@ -148,6 +148,49 @@ export type Database = {
           },
         ]
       }
+      staff_departments: {
+        Row: {
+          created_at: string
+          department_id: string
+          id: string
+          staff_id: string
+        }
+        Insert: {
+          created_at?: string
+          department_id: string
+          id?: string
+          staff_id: string
+        }
+        Update: {
+          created_at?: string
+          department_id?: string
+          id?: string
+          staff_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_departments_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_departments_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_departments_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tickets: {
         Row: {
           assigned_to: string | null
@@ -231,6 +274,37 @@ export type Database = {
       }
     }
     Views: {
+      staff_departments_public: {
+        Row: {
+          department_id: string | null
+          department_name: string | null
+          id: string | null
+          staff_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_departments_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_departments_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_departments_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staff_public: {
         Row: {
           created_at: string | null
@@ -304,6 +378,14 @@ export type Database = {
           is_online: boolean
           role: string
           username: string
+        }[]
+      }
+      list_managers: {
+        Args: never
+        Returns: {
+          display_name: string
+          id: string
+          is_online: boolean
         }[]
       }
     }

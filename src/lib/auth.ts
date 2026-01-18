@@ -1,11 +1,16 @@
 import { supabase } from "@/integrations/supabase/client";
 
+export interface StaffDepartment {
+  id: string;
+  name: string;
+}
+
 export interface Staff {
   id: string;
   username: string;
   display_name: string;
   role: "admin" | "manager" | "associate";
-  department_id: string | null;
+  departments?: StaffDepartment[];
   is_online: boolean;
   last_seen?: string;
   created_at?: string;
@@ -51,7 +56,7 @@ export async function createStaffMember(
   password: string,
   displayName: string,
   role: "admin" | "manager" | "associate",
-  departmentId: string | null,
+  departmentIds: string[],
   createdBy: string
 ): Promise<{ staff: Staff | null; error: string | null }> {
   try {
@@ -62,7 +67,7 @@ export async function createStaffMember(
         password,
         displayName,
         role,
-        departmentId,
+        departmentIds,
         createdBy,
       },
     });
@@ -104,6 +109,27 @@ export async function listStaffMembers(): Promise<{
   }
 }
 
+export async function listManagers(): Promise<{
+  managers: { id: string; display_name: string; is_online: boolean }[];
+  error: string | null;
+}> {
+  try {
+    const { data, error } = await supabase.functions.invoke("staff-auth", {
+      body: { action: "list-managers" },
+    });
+
+    if (error) {
+      console.error("List managers error:", error);
+      return { managers: [], error: "Failed to fetch managers" };
+    }
+
+    return { managers: data.managers || [], error: null };
+  } catch (err) {
+    console.error("List managers exception:", err);
+    return { managers: [], error: "An error occurred" };
+  }
+}
+
 export async function updateStaffMember(
   staffId: string,
   updates: Partial<Staff>
@@ -120,6 +146,26 @@ export async function updateStaffMember(
     return { success: true, error: null };
   } catch (err) {
     console.error("Update staff exception:", err);
+    return { success: false, error: "An error occurred" };
+  }
+}
+
+export async function updateStaffDepartments(
+  staffId: string,
+  departmentIds: string[]
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const { data, error } = await supabase.functions.invoke("staff-auth", {
+      body: { action: "update-departments", staffId, departmentIds },
+    });
+
+    if (error || data.error) {
+      return { success: false, error: data?.error || "Failed to update departments" };
+    }
+
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("Update departments exception:", err);
     return { success: false, error: "An error occurred" };
   }
 }
