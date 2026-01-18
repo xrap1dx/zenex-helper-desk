@@ -1,27 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { hash, compare } from "https://deno.land/x/bcrypt@v0.4.1/src/main.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Helper function for sync-style bcrypt operations (avoids Worker issue)
-async function hashPassword(password: string): Promise<string> {
-  // Use a fixed salt for consistency in edge runtime
-  const salt = "$2a$10$" + crypto.getRandomValues(new Uint8Array(16))
-    .reduce((str, byte) => str + byte.toString(16).padStart(2, '0'), '')
-    .substring(0, 22);
-  return await hash(password, salt);
-}
-
-async function verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
-  try {
-    return await compare(password, hashedPassword);
-  } catch {
-    return false;
-  }
+// Simple password comparison for bcrypt hashes
+// Since we can't use bcrypt.compare in edge runtime, we'll use a workaround
+async function verifyBcryptPassword(password: string, hash: string): Promise<boolean> {
+  // Use Web Crypto API for comparison via a timing-safe approach
+  // For bcrypt hashes, we need to use the database function
+  return false; // Will use DB function instead
 }
 
 serve(async (req) => {
@@ -58,23 +48,16 @@ serve(async (req) => {
           );
         }
 
-        // Verify password using the database function for security
-        const { data: validLogin } = await supabase
-          .rpc('is_valid_staff_login', { 
-            p_username: username, 
-            p_password_hash: password 
+        // Use database function to verify bcrypt password
+        const { data: verifyResult, error: verifyError } = await supabase
+          .rpc('verify_bcrypt_password', { 
+            password_attempt: password, 
+            password_hash: staff.password_hash 
           });
 
-        // If DB function doesn't exist or fails, try direct comparison
-        let isValid = false;
-        if (validLogin && validLogin.length > 0) {
-          isValid = true;
-        } else {
-          // Fallback: simple comparison (for initial setup)
-          isValid = await verifyPassword(password, staff.password_hash);
-        }
+        console.log('Password verify result:', verifyResult, 'error:', verifyError);
         
-        if (!isValid) {
+        if (verifyError || !verifyResult) {
           console.log('Login failed: invalid password');
           return new Response(
             JSON.stringify({ error: 'Invalid credentials' }),
@@ -141,16 +124,16 @@ serve(async (req) => {
           );
         }
 
-        // Hash password using pgcrypto in database for consistency
-        const { data: hashResult } = await supabase
-          .rpc('crypt_password', { password_text: password });
+        // Hash password using database function (bcrypt via pgcrypto)
+        const { data: hashResult, error: hashError } = await supabase
+          .rpc('hash_bcrypt_password', { password_text: password });
         
-        let passwordHash: string;
-        if (hashResult) {
-          passwordHash = hashResult;
-        } else {
-          // Fallback to JS hashing
-          passwordHash = await hashPassword(password);
+        if (hashError || !hashResult) {
+          console.error('Password hash error:', hashError);
+          return new Response(
+            JSON.stringify({ error: 'Failed to process password' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
         }
 
         // Create staff member (single role)
@@ -158,7 +141,7 @@ serve(async (req) => {
           .from('staff')
           .insert({
             username,
-            password_hash: passwordHash,
+            password_hash: hashResult,
             display_name: displayName,
             role,
             created_by: createdBy,
@@ -294,6 +277,41 @@ serve(async (req) => {
         }
 
         console.log(`Staff departments updated: ${staffId}`);
+        return new Response(
+          JSON.stringify({ success: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'update-password': {
+        const { staffId, newPassword } = params;
+        
+        // Hash new password
+        const { data: hashResult, error: hashError } = await supabase
+          .rpc('hash_bcrypt_password', { password_text: newPassword });
+        
+        if (hashError || !hashResult) {
+          console.error('Password hash error:', hashError);
+          return new Response(
+            JSON.stringify({ error: 'Failed to process password' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const { error } = await supabase
+          .from('staff')
+          .update({ password_hash: hashResult })
+          .eq('id', staffId);
+
+        if (error) {
+          console.error('Update password error:', error);
+          return new Response(
+            JSON.stringify({ error: 'Failed to update password' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        console.log(`Password updated for staff: ${staffId}`);
         return new Response(
           JSON.stringify({ success: true }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
