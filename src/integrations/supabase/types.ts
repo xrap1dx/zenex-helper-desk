@@ -365,6 +365,7 @@ export type Database = {
       }
     }
     Functions: {
+      crypt_password: { Args: { password_text: string }; Returns: string }
       is_ticket_owner: {
         Args: { session_id: string; ticket_id: string }
         Returns: boolean
