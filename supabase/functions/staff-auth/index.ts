@@ -1,11 +1,28 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
+import { hash, compare } from "https://deno.land/x/bcrypt@v0.4.1/src/main.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Helper function for sync-style bcrypt operations (avoids Worker issue)
+async function hashPassword(password: string): Promise<string> {
+  // Use a fixed salt for consistency in edge runtime
+  const salt = "$2a$10$" + crypto.getRandomValues(new Uint8Array(16))
+    .reduce((str, byte) => str + byte.toString(16).padStart(2, '0'), '')
+    .substring(0, 22);
+  return await hash(password, salt);
+}
+
+async function verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
+  try {
+    return await compare(password, hashedPassword);
+  } catch {
+    return false;
+  }
+}
 
 serve(async (req) => {
   // Handle CORS preflight
@@ -41,9 +58,23 @@ serve(async (req) => {
           );
         }
 
-        // Verify password
-        const valid = await bcrypt.compare(password, staff.password_hash);
-        if (!valid) {
+        // Verify password using the database function for security
+        const { data: validLogin } = await supabase
+          .rpc('is_valid_staff_login', { 
+            p_username: username, 
+            p_password_hash: password 
+          });
+
+        // If DB function doesn't exist or fails, try direct comparison
+        let isValid = false;
+        if (validLogin && validLogin.length > 0) {
+          isValid = true;
+        } else {
+          // Fallback: simple comparison (for initial setup)
+          isValid = await verifyPassword(password, staff.password_hash);
+        }
+        
+        if (!isValid) {
           console.log('Login failed: invalid password');
           return new Response(
             JSON.stringify({ error: 'Invalid credentials' }),
@@ -110,9 +141,17 @@ serve(async (req) => {
           );
         }
 
-        // Hash password
-        const salt = await bcrypt.genSalt(10);
-        const passwordHash = await bcrypt.hash(password, salt);
+        // Hash password using pgcrypto in database for consistency
+        const { data: hashResult } = await supabase
+          .rpc('crypt_password', { password_text: password });
+        
+        let passwordHash: string;
+        if (hashResult) {
+          passwordHash = hashResult;
+        } else {
+          // Fallback to JS hashing
+          passwordHash = await hashPassword(password);
+        }
 
         // Create staff member (single role)
         const { data: newStaff, error } = await supabase
@@ -121,7 +160,7 @@ serve(async (req) => {
             username,
             password_hash: passwordHash,
             display_name: displayName,
-            role, // Single role
+            role,
             created_by: createdBy,
           })
           .select('id, username, display_name, role, is_online, created_at')
