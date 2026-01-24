@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useStaff } from "@/contexts/StaffContext";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,7 @@ interface Ticket {
   assigned_to: string | null;
   referred_to: string | null;
   department?: { name: string };
+  visitor_typing?: boolean;
 }
 
 interface Department {
@@ -66,7 +67,9 @@ export function TicketChat({ ticketId }: TicketChatProps) {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [visitorTyping, setVisitorTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (ticketId) {
@@ -87,6 +90,20 @@ export function TicketChat({ ticketId }: TicketChatProps) {
           },
           () => fetchMessages()
         )
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "tickets",
+            filter: `id=eq.${ticketId}`,
+          },
+          (payload: { new: { visitor_typing?: boolean } }) => {
+            if (payload.new.visitor_typing !== undefined) {
+              setVisitorTyping(payload.new.visitor_typing);
+            }
+          }
+        )
         .subscribe();
 
       return () => {
@@ -97,7 +114,7 @@ export function TicketChat({ ticketId }: TicketChatProps) {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, visitorTyping]);
 
   const fetchTicket = async () => {
     if (!ticketId) return;
@@ -187,11 +204,30 @@ export function TicketChat({ ticketId }: TicketChatProps) {
     fetchTicket();
   };
 
+  // Update staff typing status
+  const updateStaffTyping = useCallback(async (isTyping: boolean) => {
+    if (!ticketId) return;
+    await supabase.from("tickets").update({ staff_typing: isTyping, typing_updated_at: new Date().toISOString() }).eq("id", ticketId);
+  }, [ticketId]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewMessage(e.target.value);
+    updateStaffTyping(true);
+    
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => updateStaffTyping(false), 2000);
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
+  };
+  
+  const handleSendMessage = () => {
+    updateStaffTyping(false);
+    sendMessage();
   };
 
   if (!ticketId) {
@@ -318,6 +354,16 @@ export function TicketChat({ ticketId }: TicketChatProps) {
             </div>
           </div>
         ))}
+        {visitorTyping && (
+          <div className="flex items-center gap-2 text-muted-foreground text-sm animate-fade-in">
+            <div className="flex gap-1">
+              <span className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "0s" }} />
+              <span className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "0.15s" }} />
+              <span className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "0.3s" }} />
+            </div>
+            <span>{ticket?.visitor_name} is typing...</span>
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -327,14 +373,14 @@ export function TicketChat({ ticketId }: TicketChatProps) {
           <Input
             placeholder="Type your reply..."
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
+            onChange={handleInputChange}
             onKeyPress={handleKeyPress}
             className="flex-1"
             disabled={ticket?.status === "closed"}
           />
           <Button
             className="gradient-bg"
-            onClick={sendMessage}
+            onClick={handleSendMessage}
             disabled={!newMessage.trim() || isLoading || ticket?.status === "closed"}
           >
             <Send className="h-4 w-4 text-primary-foreground" />

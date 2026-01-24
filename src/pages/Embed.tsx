@@ -8,11 +8,9 @@ export default function Embed() {
 
   // Force transparent background for iframe embedding
   useEffect(() => {
-    // Override all backgrounds
     document.documentElement.style.cssText = "background: transparent !important;";
     document.body.style.cssText = "background: transparent !important;";
     
-    // Also target the root div
     const root = document.getElementById("root");
     if (root) {
       root.style.cssText = "background: transparent !important;";
@@ -27,15 +25,22 @@ export default function Embed() {
 
   return (
     <>
-      {/* Inject global transparent styles */}
       <style>{`
         html, body, #root {
           background: transparent !important;
           background-color: transparent !important;
         }
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
+        @keyframes scaleIn {
+          from { opacity: 0; transform: scale(0.9) translateY(10px); }
+          to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes scaleOut {
+          from { opacity: 1; transform: scale(1) translateY(0); }
+          to { opacity: 0; transform: scale(0.9) translateY(10px); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
       `}</style>
 
@@ -52,16 +57,17 @@ export default function Embed() {
             style={{
               pointerEvents: "auto",
               position: "fixed",
-              bottom: "96px",
-              right: "24px",
+              bottom: "88px",
+              right: "16px",
               zIndex: 50,
-              width: "380px",
-              maxWidth: "calc(100vw - 48px)",
-              borderRadius: "16px",
+              width: "360px",
+              maxWidth: "calc(100vw - 32px)",
+              maxHeight: "calc(100vh - 120px)",
+              borderRadius: "12px",
               overflow: "hidden",
-              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 30px rgba(0, 217, 255, 0.1)",
-              border: "1px solid rgba(255, 255, 255, 0.1)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
               backgroundColor: "#0a0d1f",
+              animation: "scaleIn 0.2s ease-out forwards",
             }}
           >
             {/* Header */}
@@ -71,68 +77,80 @@ export default function Embed() {
                 alignItems: "center",
                 justifyContent: "space-between",
                 padding: "12px 16px",
-                background: "linear-gradient(135deg, rgba(0, 217, 255, 0.2), rgba(120, 70, 255, 0.2))",
-                backgroundColor: "#0a0d1f",
+                backgroundColor: "#0d1025",
+                borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <div style={{
                   width: "8px",
                   height: "8px",
                   borderRadius: "50%",
-                  background: "#4ade80",
-                  animation: "pulse 2s infinite"
+                  backgroundColor: "#22c55e",
                 }} />
-                <span style={{ fontWeight: 600, color: "#fff", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>Zenex Support</span>
+                <span style={{ 
+                  fontWeight: 600, 
+                  color: "#fff", 
+                  fontSize: "14px",
+                  fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" 
+                }}>
+                  Zenex Support
+                </span>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
                 <button
                   style={{
-                    height: "32px",
-                    width: "32px",
+                    height: "28px",
+                    width: "28px",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     borderRadius: "6px",
-                    color: "rgba(255,255,255,0.8)",
+                    color: "rgba(255,255,255,0.6)",
                     background: "transparent",
                     border: "none",
-                    cursor: "pointer"
+                    cursor: "pointer",
+                    transition: "background 0.15s",
                   }}
                   onClick={() => setIsMinimized(!isMinimized)}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)"}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
                 >
-                  <Minimize2 style={{ height: "16px", width: "16px" }} />
+                  <Minimize2 style={{ height: "14px", width: "14px" }} />
                 </button>
                 <button
                   style={{
-                    height: "32px",
-                    width: "32px",
+                    height: "28px",
+                    width: "28px",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     borderRadius: "6px",
-                    color: "rgba(255,255,255,0.8)",
+                    color: "rgba(255,255,255,0.6)",
                     background: "transparent",
                     border: "none",
-                    cursor: "pointer"
+                    cursor: "pointer",
+                    transition: "background 0.15s",
                   }}
                   onClick={() => setIsOpen(false)}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)"}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
                 >
-                  <X style={{ height: "16px", width: "16px" }} />
+                  <X style={{ height: "14px", width: "14px" }} />
                 </button>
               </div>
             </div>
 
-            {/* Chat Content - with explicit background */}
+            {/* Chat Content */}
             {!isMinimized && (
-              <div style={{ backgroundColor: "#0a0d1f", minHeight: "400px" }}>
+              <div style={{ backgroundColor: "#0a0d1f" }}>
                 <EmbedChatWindow />
               </div>
             )}
           </div>
         )}
 
-        {/* Toggle Button */}
+        {/* Toggle Button - Clean, no glow */}
         <button
           onClick={() => {
             setIsOpen(!isOpen);
@@ -141,27 +159,28 @@ export default function Embed() {
           style={{
             pointerEvents: "auto",
             position: "fixed",
-            bottom: "24px",
-            right: "24px",
+            bottom: "16px",
+            right: "16px",
             zIndex: 50,
-            width: "56px",
-            height: "56px",
+            width: "52px",
+            height: "52px",
             borderRadius: "50%",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            transition: "all 0.3s",
+            transition: "transform 0.2s ease, background 0.2s ease",
             transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
-            background: "linear-gradient(135deg, rgba(0, 217, 255, 0.9), rgba(120, 70, 255, 0.9))",
-            boxShadow: "0 8px 32px rgba(0, 217, 255, 0.4)",
+            background: "#6366f1",
             border: "none",
-            cursor: "pointer"
+            cursor: "pointer",
           }}
+          onMouseEnter={(e) => e.currentTarget.style.transform = isOpen ? "rotate(90deg) scale(1.05)" : "scale(1.05)"}
+          onMouseLeave={(e) => e.currentTarget.style.transform = isOpen ? "rotate(90deg)" : "rotate(0deg)"}
         >
           {isOpen ? (
-            <X style={{ height: "24px", width: "24px", color: "#fff" }} />
+            <X style={{ height: "22px", width: "22px", color: "#fff" }} />
           ) : (
-            <MessageCircle style={{ height: "24px", width: "24px", color: "#fff" }} />
+            <MessageCircle style={{ height: "22px", width: "22px", color: "#fff" }} />
           )}
         </button>
       </div>
