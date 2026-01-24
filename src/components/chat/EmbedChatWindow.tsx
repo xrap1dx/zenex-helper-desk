@@ -71,7 +71,9 @@ const styles = {
   container: {
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif",
     color: "#fff",
+    backgroundColor: "#0a0d1f",
     background: "#0a0d1f",
+    minHeight: "100%",
   },
   button: {
     background: "linear-gradient(135deg, rgba(0, 217, 255, 0.8), rgba(120, 70, 255, 0.8))",
