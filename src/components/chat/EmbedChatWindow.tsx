@@ -2,6 +2,19 @@ import { useState, useEffect, useRef } from "react";
 import { Send, Loader2, ArrowLeft } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
+// Polyfill for crypto.randomUUID (not available in all browsers/contexts)
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback for older browsers or non-secure contexts
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 interface Message {
   id: string;
   content: string;
@@ -135,7 +148,7 @@ export function EmbedChatWindow() {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedIssue, setSelectedIssue] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const sessionId = useRef<string>(crypto.randomUUID());
+  const sessionId = useRef<string>(generateUUID());
   const [isRestoring, setIsRestoring] = useState(true);
 
   // Restore session from localStorage
@@ -309,7 +322,7 @@ export function EmbedChatWindow() {
 
   const handleNewChat = () => {
     localStorage.removeItem(STORAGE_KEY);
-    sessionId.current = crypto.randomUUID();
+    sessionId.current = generateUUID();
     setStep("welcome");
     setVisitorName("");
     setTicketId(null);
