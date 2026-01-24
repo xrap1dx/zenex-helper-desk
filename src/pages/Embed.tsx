@@ -61,8 +61,7 @@ export default function Embed() {
               overflow: "hidden",
               boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 30px rgba(0, 217, 255, 0.1)",
               border: "1px solid rgba(255, 255, 255, 0.1)",
-              background: "#0a0d1f",
-              height: isMinimized ? "56px" : "auto"
+              backgroundColor: "#0a0d1f",
             }}
           >
             {/* Header */}
@@ -72,7 +71,8 @@ export default function Embed() {
                 alignItems: "center",
                 justifyContent: "space-between",
                 padding: "12px 16px",
-                background: "linear-gradient(135deg, rgba(0, 217, 255, 0.2), rgba(120, 70, 255, 0.2))"
+                background: "linear-gradient(135deg, rgba(0, 217, 255, 0.2), rgba(120, 70, 255, 0.2))",
+                backgroundColor: "#0a0d1f",
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -123,8 +123,12 @@ export default function Embed() {
               </div>
             </div>
 
-            {/* Chat Content */}
-            {!isMinimized && <EmbedChatWindow />}
+            {/* Chat Content - with explicit background */}
+            {!isMinimized && (
+              <div style={{ backgroundColor: "#0a0d1f", minHeight: "400px" }}>
+                <EmbedChatWindow />
+              </div>
+            )}
           </div>
         )}
 
