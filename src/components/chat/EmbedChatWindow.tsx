@@ -55,7 +55,12 @@ const issueOptions: IssueOption[] = [
   { id: "partnership", label: "🤝 Partnership Inquiry", description: "Business partnerships or collaborations" },
 ];
 
-export function EmbedChatWindow() {
+interface EmbedChatWindowProps {
+  agentsOnline?: boolean;
+  isMobile?: boolean;
+}
+
+export function EmbedChatWindow({ agentsOnline = true, isMobile = false }: EmbedChatWindowProps) {
   const [step, setStep] = useState<ChatStep>("welcome");
   const [visitorName, setVisitorName] = useState("");
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -266,6 +271,9 @@ export function EmbedChatWindow() {
       fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
       color: "#fff",
       backgroundColor: "#0a0d1f",
+      height: isMobile ? "100%" : "auto",
+      display: "flex",
+      flexDirection: "column" as const,
     },
     button: {
       background: "#6366f1",
@@ -281,7 +289,7 @@ export function EmbedChatWindow() {
     },
     input: {
       width: "100%",
-      padding: "10px 14px",
+      padding: "12px 14px",
       background: "rgba(255, 255, 255, 0.06)",
       border: "1px solid rgba(255, 255, 255, 0.1)",
       borderRadius: "8px",
@@ -291,7 +299,7 @@ export function EmbedChatWindow() {
     },
     issueButton: {
       width: "100%",
-      padding: "10px 14px",
+      padding: "12px 14px",
       textAlign: "left" as const,
       background: "rgba(255, 255, 255, 0.03)",
       border: "1px solid rgba(255, 255, 255, 0.08)",
@@ -319,7 +327,7 @@ export function EmbedChatWindow() {
 
   if (isRestoring) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "300px", ...styles.container }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: isMobile ? "100%" : "300px", ...styles.container }}>
         <Loader2 className="h-5 w-5 animate-spin" style={{ color: "#6366f1" }} />
       </div>
     );
@@ -327,24 +335,46 @@ export function EmbedChatWindow() {
 
   if (step === "welcome") {
     return (
-      <div style={{ padding: "20px", ...styles.container }}>
-        <div style={{ textAlign: "center", marginBottom: "20px" }}>
+      <div style={{ padding: isMobile ? "32px 20px" : "20px", flex: 1, display: "flex", flexDirection: "column", justifyContent: isMobile ? "center" : "flex-start", ...styles.container }}>
+        <div style={{ textAlign: "center", marginBottom: "24px" }}>
           <div style={{
-            width: "56px",
-            height: "56px",
-            borderRadius: "12px",
+            width: "64px",
+            height: "64px",
+            borderRadius: "16px",
             background: "#6366f1",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            margin: "0 auto 14px",
-            fontSize: "24px"
+            margin: "0 auto 16px",
+            fontSize: "28px"
           }}>💬</div>
-          <h3 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "6px" }}>Welcome to Zenex Support</h3>
-          <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.5)" }}>
+          <h3 style={{ fontSize: "18px", fontWeight: 600, marginBottom: "8px" }}>Welcome to Zenex Support</h3>
+          <p style={{ fontSize: "14px", color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>
             We're here to help! Start a conversation.
           </p>
         </div>
+        
+        {/* Agent status message */}
+        {!agentsOnline && (
+          <div style={{
+            padding: "14px 16px",
+            background: "rgba(239, 68, 68, 0.1)",
+            border: "1px solid rgba(239, 68, 68, 0.2)",
+            borderRadius: "8px",
+            marginBottom: "16px",
+            fontSize: "13px",
+            color: "rgba(255,255,255,0.8)",
+            lineHeight: 1.5
+          }}>
+            <p style={{ margin: 0 }}>
+              <strong style={{ color: "#ef4444" }}>No agents online right now.</strong>
+            </p>
+            <p style={{ margin: "8px 0 0 0", color: "rgba(255,255,255,0.6)" }}>
+              Feel free to start a chat and we'll get back to you shortly. For urgent inquiries, please contact us on Discord.
+            </p>
+          </div>
+        )}
+        
         <button style={styles.button} onClick={() => setStep("name")}>
           Start Chat
         </button>
@@ -354,10 +384,10 @@ export function EmbedChatWindow() {
 
   if (step === "name") {
     return (
-      <div style={{ padding: "20px", ...styles.container }}>
-        <div style={{ marginBottom: "14px" }}>
-          <h3 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "4px" }}>What's your name?</h3>
-          <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.5)" }}>So our team knows who they're talking to.</p>
+      <div style={{ padding: isMobile ? "32px 20px" : "20px", flex: 1, display: "flex", flexDirection: "column", justifyContent: isMobile ? "center" : "flex-start", ...styles.container }}>
+        <div style={{ marginBottom: "16px" }}>
+          <h3 style={{ fontSize: "18px", fontWeight: 600, marginBottom: "6px" }}>What's your name?</h3>
+          <p style={{ fontSize: "14px", color: "rgba(255,255,255,0.5)" }}>So our team knows who they're talking to.</p>
         </div>
         <input
           style={styles.input}
@@ -365,9 +395,10 @@ export function EmbedChatWindow() {
           value={visitorName}
           onChange={(e) => setVisitorName(e.target.value)}
           onKeyPress={(e) => { if (e.key === "Enter" && visitorName.trim()) setStep("issue"); }}
+          autoFocus
         />
         <button
-          style={{ ...styles.button, marginTop: "12px", opacity: visitorName.trim() ? 1 : 0.5 }}
+          style={{ ...styles.button, marginTop: "14px", opacity: visitorName.trim() ? 1 : 0.5 }}
           disabled={!visitorName.trim()}
           onClick={() => setStep("issue")}
         >
@@ -379,12 +410,12 @@ export function EmbedChatWindow() {
 
   if (step === "issue") {
     return (
-      <div style={{ padding: "20px", ...styles.container }}>
-        <div style={{ marginBottom: "14px" }}>
-          <h3 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "4px" }}>How can we help?</h3>
-          <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.5)" }}>Choose what best describes your issue.</p>
+      <div style={{ padding: isMobile ? "24px 20px" : "20px", flex: 1, display: "flex", flexDirection: "column", ...styles.container }}>
+        <div style={{ marginBottom: "16px" }}>
+          <h3 style={{ fontSize: "18px", fontWeight: 600, marginBottom: "6px" }}>How can we help?</h3>
+          <p style={{ fontSize: "14px", color: "rgba(255,255,255,0.5)" }}>Choose what best describes your issue.</p>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "240px", overflowY: "auto" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px", flex: 1, overflowY: "auto", paddingBottom: "8px" }}>
           {issueOptions.map((issue) => (
             <button
               key={issue.id}
@@ -400,8 +431,8 @@ export function EmbedChatWindow() {
                 e.currentTarget.style.background = "rgba(255, 255, 255, 0.03)";
               }}
             >
-              <span style={{ fontWeight: 500, display: "block", fontSize: "13px" }}>{issue.label}</span>
-              <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>{issue.description}</span>
+              <span style={{ fontWeight: 500, display: "block", fontSize: "14px" }}>{issue.label}</span>
+              <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.45)" }}>{issue.description}</span>
             </button>
           ))}
         </div>
@@ -416,10 +447,10 @@ export function EmbedChatWindow() {
 
   // Chat step
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "380px", ...styles.container }}>
+    <div style={{ display: "flex", flexDirection: "column", height: isMobile ? "100%" : "380px", ...styles.container }}>
       {/* Chat Header */}
       <div style={{ 
-        padding: "8px 14px", 
+        padding: "10px 14px", 
         borderBottom: "1px solid rgba(255,255,255,0.06)", 
         display: "flex", 
         alignItems: "center", 
@@ -428,20 +459,25 @@ export function EmbedChatWindow() {
         <button
           onClick={handleNewChat}
           style={{ 
-            fontSize: "12px", 
+            fontSize: "13px", 
             color: "rgba(255,255,255,0.5)", 
             background: "none", 
             border: "none", 
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
-            gap: "4px"
+            gap: "4px",
+            padding: "4px 8px",
+            borderRadius: "4px",
+            transition: "background 0.15s"
           }}
+          onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.08)"}
+          onMouseLeave={(e) => e.currentTarget.style.background = "none"}
         >
-          <ArrowLeft className="h-3 w-3" />
+          <ArrowLeft className="h-3.5 w-3.5" />
           New Chat
         </button>
-        <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)" }}>
+        <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.5)" }}>
           {visitorName}
         </span>
       </div>
@@ -450,8 +486,8 @@ export function EmbedChatWindow() {
       <div style={{ flex: 1, overflowY: "auto", padding: "14px", display: "flex", flexDirection: "column", gap: "10px" }}>
         {messages.map((msg) => (
           <div key={msg.id} style={msg.sender_type === "visitor" ? styles.visitorMessage : styles.staffMessage}>
-            <p style={{ fontSize: "13px", margin: 0, lineHeight: 1.4 }}>{msg.content}</p>
-            <span style={{ fontSize: "10px", opacity: 0.6, marginTop: "4px", display: "block" }}>
+            <p style={{ fontSize: "14px", margin: 0, lineHeight: 1.5 }}>{msg.content}</p>
+            <span style={{ fontSize: "11px", opacity: 0.6, marginTop: "4px", display: "block" }}>
               {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </span>
           </div>
@@ -461,7 +497,7 @@ export function EmbedChatWindow() {
       </div>
 
       {/* Input */}
-      <div style={{ padding: "12px 14px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      <div style={{ padding: isMobile ? "16px" : "12px 14px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
         <div style={{ display: "flex", gap: "8px" }}>
           <input
             style={{ ...styles.input, flex: 1 }}
@@ -472,8 +508,8 @@ export function EmbedChatWindow() {
           />
           <button
             style={{
-              width: "40px",
-              height: "40px",
+              width: "44px",
+              height: "44px",
               borderRadius: "8px",
               background: newMessage.trim() ? "#6366f1" : "rgba(255,255,255,0.08)",
               border: "none",
@@ -482,6 +518,7 @@ export function EmbedChatWindow() {
               alignItems: "center",
               justifyContent: "center",
               transition: "background 0.15s",
+              flexShrink: 0,
             }}
             onClick={sendMessage}
             disabled={!newMessage.trim()}
