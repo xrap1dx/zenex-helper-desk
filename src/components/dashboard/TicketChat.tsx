@@ -12,6 +12,8 @@ import {
   User,
   MessageSquare,
   UserCheck,
+  StickyNote,
+  Trash2,
 } from "lucide-react";
 import {
   Select,
@@ -19,12 +21,27 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  SelectGroup,
-  SelectLabel,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { listManagers } from "@/lib/auth";
-import { TicketNotes } from "./TicketNotes";
-import { TypingIndicator } from "@/components/chat/TypingIndicator";
 
 interface Message {
   id: string;
@@ -33,6 +50,20 @@ interface Message {
   sender_id: string | null;
   created_at: string;
   staff?: { display_name: string } | null;
+}
+
+interface TicketNote {
+  id: string;
+  note_type: string;
+  content: string;
+  metadata: {
+    target_department?: string;
+    target_staff?: string;
+    old_status?: string;
+    new_status?: string;
+    staff_name?: string;
+  } | null;
+  created_at: string;
 }
 
 interface Ticket {
@@ -59,17 +90,26 @@ interface Manager {
 
 interface TicketChatProps {
   ticketId: string | null;
+  onTicketDeleted?: () => void;
 }
 
-export function TicketChat({ ticketId }: TicketChatProps) {
+// Merged type for timeline view
+type TimelineItem = 
+  | { type: "message"; data: Message; timestamp: string }
+  | { type: "note"; data: TicketNote; timestamp: string };
+
+export function TicketChat({ ticketId, onTicketDeleted }: TicketChatProps) {
   const { staff } = useStaff();
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [notes, setNotes] = useState<TicketNote[]>([]);
   const [newMessage, setNewMessage] = useState("");
+  const [newNote, setNewNote] = useState("");
   const [departments, setDepartments] = useState<Department[]>([]);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [visitorTyping, setVisitorTyping] = useState(false);
+  const [isNotesOpen, setIsNotesOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -77,35 +117,34 @@ export function TicketChat({ ticketId }: TicketChatProps) {
     if (ticketId) {
       fetchTicket();
       fetchMessages();
+      fetchNotes();
       fetchDepartments();
       fetchManagers();
 
       const channel = supabase
         .channel(`ticket-chat:${ticketId}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "messages",
-            filter: `ticket_id=eq.${ticketId}`,
-          },
-          () => fetchMessages()
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "tickets",
-            filter: `id=eq.${ticketId}`,
-          },
-          (payload: { new: { visitor_typing?: boolean } }) => {
-            if (payload.new.visitor_typing !== undefined) {
-              setVisitorTyping(payload.new.visitor_typing);
-            }
+        .on("postgres_changes", {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `ticket_id=eq.${ticketId}`,
+        }, () => fetchMessages())
+        .on("postgres_changes", {
+          event: "*",
+          schema: "public",
+          table: "ticket_notes",
+          filter: `ticket_id=eq.${ticketId}`,
+        }, () => fetchNotes())
+        .on("postgres_changes", {
+          event: "UPDATE",
+          schema: "public",
+          table: "tickets",
+          filter: `id=eq.${ticketId}`,
+        }, (payload: { new: { visitor_typing?: boolean } }) => {
+          if (payload.new.visitor_typing !== undefined) {
+            setVisitorTyping(payload.new.visitor_typing);
           }
-        )
+        })
         .subscribe();
 
       return () => {
@@ -116,7 +155,7 @@ export function TicketChat({ ticketId }: TicketChatProps) {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, visitorTyping]);
+  }, [messages, notes, visitorTyping]);
 
   const fetchTicket = async () => {
     if (!ticketId) return;
@@ -136,6 +175,16 @@ export function TicketChat({ ticketId }: TicketChatProps) {
       .eq("ticket_id", ticketId)
       .order("created_at", { ascending: true });
     if (data) setMessages(data as Message[]);
+  };
+
+  const fetchNotes = async () => {
+    if (!ticketId) return;
+    const { data } = await supabase
+      .from("ticket_notes")
+      .select("*")
+      .eq("ticket_id", ticketId)
+      .order("created_at", { ascending: true });
+    if (data) setNotes(data as TicketNote[]);
   };
 
   const fetchDepartments = async () => {
@@ -159,17 +208,40 @@ export function TicketChat({ ticketId }: TicketChatProps) {
       content: newMessage.trim(),
     });
 
-    // Update ticket status if needed
     if (ticket?.status === "open") {
       await supabase
         .from("tickets")
         .update({ status: "in_progress", assigned_to: staff.id })
         .eq("id", ticketId);
+      
+      await supabase.from("ticket_notes").insert({
+        ticket_id: ticketId,
+        staff_id: staff.id,
+        note_type: "assigned",
+        content: `${staff.display_name} was assigned to this ticket`,
+        metadata: { staff_name: staff.display_name },
+      });
+      
       fetchTicket();
     }
 
     setNewMessage("");
     setIsLoading(false);
+  };
+
+  const addNote = async () => {
+    if (!newNote.trim() || !ticketId || !staff) return;
+
+    await supabase.from("ticket_notes").insert({
+      ticket_id: ticketId,
+      staff_id: staff.id,
+      note_type: "note",
+      content: newNote.trim(),
+      metadata: { staff_name: staff.display_name },
+    });
+
+    setNewNote("");
+    setIsNotesOpen(false);
   };
 
   const updateTicketStatus = async (status: "open" | "in_progress" | "waiting" | "resolved" | "closed") => {
@@ -184,7 +256,6 @@ export function TicketChat({ ticketId }: TicketChatProps) {
       })
       .eq("id", ticketId);
     
-    // Add internal note for status change
     await supabase.from("ticket_notes").insert({
       ticket_id: ticketId,
       staff_id: staff.id,
@@ -196,49 +267,57 @@ export function TicketChat({ ticketId }: TicketChatProps) {
     fetchTicket();
   };
 
-  const transferTicket = async (target: string) => {
+  const transferTicket = async (deptId: string) => {
     if (!ticketId || !staff) return;
+    const targetDept = departments.find(d => d.id === deptId);
     
-    // Check if it's a manager ID or department ID
-    const isManager = managers.some(m => m.id === target);
+    await supabase
+      .from("tickets")
+      .update({ department_id: deptId, assigned_to: null, referred_to: null })
+      .eq("id", ticketId);
     
-    if (isManager) {
-      const targetManager = managers.find(m => m.id === target);
-      // Refer to manager
-      await supabase
-        .from("tickets")
-        .update({ referred_to: target, assigned_to: target })
-        .eq("id", ticketId);
-      
-      // Add internal note for refer
-      await supabase.from("ticket_notes").insert({
-        ticket_id: ticketId,
-        staff_id: staff.id,
-        note_type: "refer",
-        content: `Referred to ${targetManager?.display_name || "manager"}`,
-        metadata: { staff_name: staff.display_name, target_staff: targetManager?.display_name },
-      });
-    } else {
-      const targetDept = departments.find(d => d.id === target);
-      // Transfer to department
-      await supabase
-        .from("tickets")
-        .update({ department_id: target, assigned_to: null, referred_to: null })
-        .eq("id", ticketId);
-      
-      // Add internal note for transfer
-      await supabase.from("ticket_notes").insert({
-        ticket_id: ticketId,
-        staff_id: staff.id,
-        note_type: "transfer",
-        content: `Transferred to ${targetDept?.name || "department"}`,
-        metadata: { staff_name: staff.display_name, target_department: targetDept?.name },
-      });
-    }
+    await supabase.from("ticket_notes").insert({
+      ticket_id: ticketId,
+      staff_id: staff.id,
+      note_type: "transfer",
+      content: `Transferred to ${targetDept?.name || "department"}`,
+      metadata: { staff_name: staff.display_name, target_department: targetDept?.name },
+    });
+    
     fetchTicket();
   };
 
-  // Update staff typing status
+  const referToManager = async (managerId: string) => {
+    if (!ticketId || !staff) return;
+    const targetManager = managers.find(m => m.id === managerId);
+    
+    await supabase
+      .from("tickets")
+      .update({ referred_to: managerId, assigned_to: managerId })
+      .eq("id", ticketId);
+    
+    await supabase.from("ticket_notes").insert({
+      ticket_id: ticketId,
+      staff_id: staff.id,
+      note_type: "refer",
+      content: `Referred to ${targetManager?.display_name || "manager"}`,
+      metadata: { staff_name: staff.display_name, target_staff: targetManager?.display_name },
+    });
+    
+    fetchTicket();
+  };
+
+  const deleteTicket = async () => {
+    if (!ticketId) return;
+    
+    // Delete related data first
+    await supabase.from("messages").delete().eq("ticket_id", ticketId);
+    await supabase.from("ticket_notes").delete().eq("ticket_id", ticketId);
+    await supabase.from("tickets").delete().eq("id", ticketId);
+    
+    onTicketDeleted?.();
+  };
+
   const updateStaffTyping = useCallback(async (isTyping: boolean) => {
     if (!ticketId) return;
     await supabase.from("tickets").update({ staff_typing: isTyping, typing_updated_at: new Date().toISOString() }).eq("id", ticketId);
@@ -264,6 +343,28 @@ export function TicketChat({ ticketId }: TicketChatProps) {
     sendMessage();
   };
 
+  // Merge messages and notes for timeline view
+  const timelineItems: TimelineItem[] = [
+    ...messages.map(m => ({ type: "message" as const, data: m, timestamp: m.created_at })),
+    ...notes.map(n => ({ type: "note" as const, data: n, timestamp: n.created_at })),
+  ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+  const getNoteText = (note: TicketNote) => {
+    const staffName = note.metadata?.staff_name || "Staff";
+    switch (note.note_type) {
+      case "transfer":
+        return `${staffName} transferred ticket to ${note.metadata?.target_department || "another department"}`;
+      case "refer":
+        return `${staffName} referred ticket to ${note.metadata?.target_staff || "a manager"}`;
+      case "status_change":
+        return `${staffName} changed status: ${note.metadata?.old_status} → ${note.metadata?.new_status}`;
+      case "assigned":
+        return `${staffName} was assigned to this ticket`;
+      default:
+        return note.content;
+    }
+  };
+
   if (!ticketId) {
     return (
       <div className="flex-1 flex items-center justify-center bg-muted/30">
@@ -276,126 +377,195 @@ export function TicketChat({ ticketId }: TicketChatProps) {
   }
 
   return (
-    <div className="flex-1 flex flex-col">
-      {/* Header */}
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      {/* Header - compact */}
       {ticket && (
-        <div className="p-3 md:p-4 border-b border-border bg-card">
-          <div className="flex flex-col md:flex-row md:items-center gap-3">
-            <div className="flex items-center gap-3 flex-1">
-              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
-                <User className="h-5 w-5 text-muted-foreground" />
+        <div className="p-2 md:p-3 border-b border-border bg-card shrink-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Visitor info */}
+            <div className="flex items-center gap-2 mr-auto">
+              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0">
+                <User className="h-4 w-4 text-muted-foreground" />
               </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold truncate">{ticket.visitor_name}</h3>
-                <p className="text-xs text-muted-foreground truncate">
-                  {ticket.department?.name}
-                </p>
+              <div className="min-w-0">
+                <h3 className="font-medium text-sm truncate">{ticket.visitor_name}</h3>
+                <p className="text-[10px] text-muted-foreground truncate">{ticket.department?.name}</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <TicketNotes ticketId={ticketId} />
+            
+            {/* Action buttons - compact row */}
+            <div className="flex items-center gap-1 flex-wrap">
+              {/* Notes */}
+              <Dialog open={isNotesOpen} onOpenChange={setIsNotesOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 px-2 text-xs">
+                    <StickyNote className="h-3 w-3 mr-1" />
+                    Notes
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add Internal Note</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <Textarea
+                      placeholder="Add a note visible only to staff..."
+                      value={newNote}
+                      onChange={(e) => setNewNote(e.target.value)}
+                      rows={4}
+                    />
+                    <Button onClick={addNote} disabled={!newNote.trim()} className="w-full">
+                      Add Note
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* Transfer */}
               <Select onValueChange={transferTicket}>
-                <SelectTrigger className="w-auto min-w-[140px]">
-                  <ArrowRight className="h-4 w-4 mr-1" />
-                  <span className="hidden sm:inline">Transfer / Refer</span>
-                  <span className="sm:hidden">Transfer</span>
+                <SelectTrigger className="h-7 w-auto min-w-[80px] text-xs px-2">
+                  <ArrowRight className="h-3 w-3 mr-1" />
+                  Transfer
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectGroup>
-                    <SelectLabel className="flex items-center gap-2">
-                      <ArrowRight className="h-3 w-3" />
-                      Departments
-                    </SelectLabel>
-                    {departments
-                      .filter((d) => d.id !== ticket.department_id)
-                      .map((dept) => (
-                        <SelectItem key={dept.id} value={dept.id}>
-                          {dept.name}
-                        </SelectItem>
-                      ))}
-                  </SelectGroup>
-                  {managers.length > 0 && (
-                    <SelectGroup>
-                      <SelectLabel className="flex items-center gap-2">
-                        <UserCheck className="h-3 w-3" />
-                        Managers
-                      </SelectLabel>
-                      {managers
-                        .filter((m) => m.id !== staff?.id)
-                        .map((mgr) => (
-                          <SelectItem key={mgr.id} value={mgr.id}>
-                            <div className="flex items-center gap-2">
-                              <div className={`w-2 h-2 rounded-full ${mgr.is_online ? "bg-green-500" : "bg-muted-foreground"}`} />
-                              {mgr.display_name}
-                            </div>
-                          </SelectItem>
-                        ))}
-                    </SelectGroup>
-                  )}
+                  {departments
+                    .filter((d) => d.id !== ticket.department_id)
+                    .map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id} className="text-sm">
+                        {dept.name}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
+
+              {/* Refer to Manager */}
+              {managers.length > 0 && (
+                <Select onValueChange={referToManager}>
+                  <SelectTrigger className="h-7 w-auto min-w-[70px] text-xs px-2">
+                    <UserCheck className="h-3 w-3 mr-1" />
+                    Refer
+                  </SelectTrigger>
+                  <SelectContent>
+                    {managers
+                      .filter((m) => m.id !== staff?.id)
+                      .map((mgr) => (
+                        <SelectItem key={mgr.id} value={mgr.id} className="text-sm">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${mgr.is_online ? "bg-green-500" : "bg-muted-foreground"}`} />
+                            {mgr.display_name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              )}
+
+              {/* Resolve */}
               <Button
                 variant="outline"
                 size="sm"
+                className="h-7 px-2 text-xs"
                 onClick={() => updateTicketStatus("resolved")}
                 disabled={ticket.status === "resolved" || ticket.status === "closed"}
               >
-                <CheckCircle className="h-4 w-4 sm:mr-1" />
-                <span className="hidden sm:inline">Resolve</span>
+                <CheckCircle className="h-3 w-3 mr-1" />
+                Resolve
               </Button>
+
+              {/* Close */}
               <Button
                 variant="outline"
                 size="sm"
+                className="h-7 px-2 text-xs"
                 onClick={() => updateTicketStatus("closed")}
                 disabled={ticket.status === "closed"}
               >
-                <XCircle className="h-4 w-4 sm:mr-1" />
-                <span className="hidden sm:inline">Close</span>
+                <XCircle className="h-3 w-3 mr-1" />
+                Close
               </Button>
+
+              {/* Delete */}
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 px-2 text-xs text-destructive hover:text-destructive">
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Ticket</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will permanently delete this ticket and all its messages. This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={deleteTicket} className="bg-destructive hover:bg-destructive/90">
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
         </div>
       )}
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-muted/20">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={cn(
-              "max-w-[70%] animate-fade-in",
-              msg.sender_type === "staff" ? "ml-auto" : ""
-            )}
-          >
-            {msg.sender_type === "staff" && msg.staff && (
-              <p className="text-xs text-muted-foreground mb-1 text-right">
-                {msg.staff.display_name}
-              </p>
-            )}
-            <div
-              className={cn(
-                "p-3 rounded-2xl",
-                msg.sender_type === "staff"
-                  ? "gradient-bg text-primary-foreground rounded-br-sm"
-                  : "bg-card border border-border rounded-bl-sm"
-              )}
-            >
-              <p className="text-sm">{msg.content}</p>
-              <span className="text-[10px] opacity-70 mt-1 block">
-                {new Date(msg.created_at).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </span>
-            </div>
-          </div>
-        ))}
+      {/* Messages + Notes Timeline */}
+      <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-muted/10 min-h-0">
+        {timelineItems.map((item) => {
+          if (item.type === "message") {
+            const msg = item.data;
+            return (
+              <div
+                key={`msg-${msg.id}`}
+                className={cn(
+                  "max-w-[75%] animate-fade-in",
+                  msg.sender_type === "staff" ? "ml-auto" : ""
+                )}
+              >
+                {msg.sender_type === "staff" && msg.staff && (
+                  <p className="text-[10px] text-muted-foreground mb-0.5 text-right">
+                    {msg.staff.display_name}
+                  </p>
+                )}
+                <div
+                  className={cn(
+                    "p-2.5 rounded-xl text-sm",
+                    msg.sender_type === "staff"
+                      ? "bg-primary text-primary-foreground rounded-br-sm"
+                      : "bg-card border border-border rounded-bl-sm"
+                  )}
+                >
+                  <p>{msg.content}</p>
+                  <span className="text-[10px] opacity-60 mt-1 block">
+                    {new Date(msg.created_at).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </div>
+              </div>
+            );
+          } else {
+            const note = item.data;
+            return (
+              <div key={`note-${note.id}`} className="flex justify-center animate-fade-in">
+                <div className="px-3 py-1.5 bg-muted/50 rounded-full text-[11px] text-muted-foreground flex items-center gap-1.5">
+                  <StickyNote className="h-3 w-3" />
+                  <span>Internal — {getNoteText(note)}</span>
+                </div>
+              </div>
+            );
+          }
+        })}
+        
         {visitorTyping && (
-          <div className="flex items-center gap-2 text-muted-foreground text-sm animate-fade-in">
+          <div className="flex items-center gap-2 text-muted-foreground text-xs animate-fade-in">
             <div className="flex gap-1">
-              <span className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "0s" }} />
-              <span className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "0.15s" }} />
-              <span className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "0.3s" }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "0s" }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "0.15s" }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "0.3s" }} />
             </div>
             <span>{ticket?.visitor_name} is typing...</span>
           </div>
@@ -404,22 +574,23 @@ export function TicketChat({ ticketId }: TicketChatProps) {
       </div>
 
       {/* Input */}
-      <div className="p-4 border-t border-border bg-card">
+      <div className="p-2 md:p-3 border-t border-border bg-card shrink-0">
         <div className="flex gap-2">
           <Input
             placeholder="Type your reply..."
             value={newMessage}
             onChange={handleInputChange}
             onKeyPress={handleKeyPress}
-            className="flex-1"
+            className="flex-1 h-9 text-sm"
             disabled={ticket?.status === "closed"}
           />
           <Button
-            className="gradient-bg"
+            size="sm"
+            className="h-9 px-3 bg-primary hover:bg-primary/90"
             onClick={handleSendMessage}
             disabled={!newMessage.trim() || isLoading || ticket?.status === "closed"}
           >
-            <Send className="h-4 w-4 text-primary-foreground" />
+            <Send className="h-4 w-4" />
           </Button>
         </div>
       </div>

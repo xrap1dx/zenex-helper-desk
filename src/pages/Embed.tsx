@@ -17,18 +17,20 @@ export default function Embed() {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // Check if any agents are online
+  // Check if any agents are actively online (last_seen within 2 minutes)
   useEffect(() => {
     const checkAgents = async () => {
+      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
       const { data } = await supabase
         .from("staff_public")
-        .select("is_online")
-        .eq("is_online", true);
+        .select("is_online, last_seen")
+        .eq("is_online", true)
+        .gte("last_seen", twoMinutesAgo);
       setAgentsOnline((data?.length || 0) > 0);
     };
     
     checkAgents();
-    const interval = setInterval(checkAgents, 30000); // Check every 30 seconds
+    const interval = setInterval(checkAgents, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -36,56 +38,54 @@ export default function Embed() {
   useEffect(() => {
     if (isOpen && isMobile) {
       document.body.style.overflow = "hidden";
+      document.body.style.position = "fixed";
+      document.body.style.width = "100%";
+      document.body.style.height = "100%";
     } else {
       document.body.style.overflow = "";
+      document.body.style.position = "";
+      document.body.style.width = "";
+      document.body.style.height = "";
     }
-    return () => { document.body.style.overflow = ""; };
-  }, [isOpen, isMobile]);
-
-  // Force transparent background for iframe embedding
-  useEffect(() => {
-    document.documentElement.style.cssText = "background: transparent !important;";
-    document.body.style.cssText = "background: transparent !important;";
-    
-    const root = document.getElementById("root");
-    if (root) {
-      root.style.cssText = "background: transparent !important;";
-    }
-
     return () => {
-      document.documentElement.style.cssText = "";
-      document.body.style.cssText = "";
-      if (root) root.style.cssText = "";
+      document.body.style.overflow = "";
+      document.body.style.position = "";
+      document.body.style.width = "";
+      document.body.style.height = "";
     };
-  }, []);
+  }, [isOpen, isMobile]);
 
   const chatWindowStyle: React.CSSProperties = isMobile && isOpen
     ? {
         pointerEvents: "auto",
         position: "fixed",
-        inset: 0,
-        zIndex: 50,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 9999,
         width: "100%",
         height: "100%",
         borderRadius: 0,
         overflow: "hidden",
         backgroundColor: "#0a0d1f",
-        animation: "scaleIn 0.2s ease-out forwards",
+        animation: "fadeIn 0.15s ease-out forwards",
       }
     : {
         pointerEvents: "auto",
         position: "fixed",
-        bottom: "88px",
+        bottom: "80px",
         right: "16px",
-        zIndex: 50,
-        width: "380px",
+        zIndex: 9999,
+        width: "360px",
         maxWidth: "calc(100vw - 32px)",
+        height: "480px",
         maxHeight: "calc(100vh - 120px)",
         borderRadius: "12px",
         overflow: "hidden",
-        border: "1px solid rgba(255, 255, 255, 0.08)",
+        border: "1px solid rgba(255, 255, 255, 0.1)",
         backgroundColor: "#0a0d1f",
-        animation: "scaleIn 0.2s ease-out forwards",
+        animation: "scaleIn 0.15s ease-out forwards",
       };
 
   return (
@@ -95,9 +95,12 @@ export default function Embed() {
           background: transparent !important;
           background-color: transparent !important;
         }
+        * {
+          box-sizing: border-box;
+        }
         @keyframes scaleIn {
-          from { opacity: 0; transform: scale(0.95) translateY(10px); }
-          to { opacity: 1; transform: scale(1) translateY(0); }
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
         }
         @keyframes fadeIn {
           from { opacity: 0; }
@@ -121,9 +124,10 @@ export default function Embed() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
-                padding: isMobile ? "16px" : "12px 16px",
+                padding: isMobile ? "14px 16px" : "10px 14px",
                 backgroundColor: "#0d1025",
-                borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
+                borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                flexShrink: 0,
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -132,6 +136,7 @@ export default function Embed() {
                   height: "8px",
                   borderRadius: "50%",
                   backgroundColor: agentsOnline ? "#22c55e" : "#ef4444",
+                  flexShrink: 0,
                 }} />
                 <span style={{ 
                   fontWeight: 600, 
@@ -142,7 +147,7 @@ export default function Embed() {
                   Zenex Support
                 </span>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                 {!isMobile && (
                   <button
                     style={{
@@ -159,7 +164,7 @@ export default function Embed() {
                       transition: "background 0.15s",
                     }}
                     onClick={() => setIsMinimized(!isMinimized)}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)"}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.1)"}
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
                   >
                     <Minimize2 style={{ height: "14px", width: "14px" }} />
@@ -180,7 +185,7 @@ export default function Embed() {
                     transition: "background 0.15s",
                   }}
                   onClick={() => setIsOpen(false)}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)"}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.1)"}
                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
                 >
                   <X style={{ height: "14px", width: "14px" }} />
@@ -192,9 +197,10 @@ export default function Embed() {
             {!isMinimized && (
               <div style={{ 
                 backgroundColor: "#0a0d1f", 
-                height: isMobile ? "calc(100% - 56px)" : "auto",
+                height: isMobile ? "calc(100% - 52px)" : "calc(100% - 44px)",
                 display: "flex",
-                flexDirection: "column"
+                flexDirection: "column",
+                overflow: "hidden",
               }}>
                 <EmbedChatWindow agentsOnline={agentsOnline} isMobile={isMobile} />
               </div>
@@ -202,7 +208,7 @@ export default function Embed() {
           </div>
         )}
 
-        {/* Toggle Button - Hidden when fullscreen mobile chat is open */}
+        {/* Toggle Button */}
         {!(isOpen && isMobile) && (
           <button
             onClick={() => {
@@ -214,14 +220,14 @@ export default function Embed() {
               position: "fixed",
               bottom: "16px",
               right: "16px",
-              zIndex: 50,
+              zIndex: 9998,
               width: "52px",
               height: "52px",
               borderRadius: "50%",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              transition: "transform 0.2s ease, background 0.2s ease",
+              transition: "transform 0.15s ease",
               transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
               background: "#6366f1",
               border: "none",
