@@ -23,7 +23,7 @@ export default function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
@@ -34,21 +34,24 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex w-full">
+    <div className="h-screen bg-background flex w-full overflow-hidden">
       <Sidebar
         currentView={currentView}
         onViewChange={setCurrentView}
         staffRole={staff.role}
       />
 
-      <main className="flex-1 flex min-w-0">
+      <main className="flex-1 flex min-w-0 overflow-hidden">
         {currentView === "tickets" && (
           <>
             <TicketList
               selectedTicketId={selectedTicketId}
               onSelectTicket={setSelectedTicketId}
             />
-            <TicketChat ticketId={selectedTicketId} />
+            <TicketChat 
+              ticketId={selectedTicketId} 
+              onTicketDeleted={() => setSelectedTicketId(null)}
+            />
           </>
         )}
 

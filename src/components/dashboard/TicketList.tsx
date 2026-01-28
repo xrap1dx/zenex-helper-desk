@@ -20,7 +20,6 @@ interface Ticket {
   created_at: string;
   updated_at: string;
   department?: { name: string };
-  unread_count?: number;
 }
 
 interface TicketListProps {
@@ -36,10 +35,7 @@ export function TicketList({ selectedTicketId, onSelectTicket }: TicketListProps
   const fetchTickets = async () => {
     let query = supabase
       .from("tickets")
-      .select(`
-        *,
-        department:departments(name)
-      `)
+      .select(`*, department:departments(name)`)
       .order("updated_at", { ascending: false });
 
     if (statusFilter !== "all") {
@@ -56,11 +52,7 @@ export function TicketList({ selectedTicketId, onSelectTicket }: TicketListProps
 
     const channel = supabase
       .channel("tickets-changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "tickets" },
-        () => fetchTickets()
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "tickets" }, () => fetchTickets())
       .subscribe();
 
     return () => {
@@ -73,7 +65,7 @@ export function TicketList({ selectedTicketId, onSelectTicket }: TicketListProps
       case "open":
         return "bg-green-500/20 text-green-400 border-green-500/30";
       case "in_progress":
-        return "bg-blue-500/20 text-blue-400 border-blue-500/30";
+        return "bg-indigo-500/20 text-indigo-400 border-indigo-500/30";
       case "waiting":
         return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
       case "resolved":
@@ -86,14 +78,14 @@ export function TicketList({ selectedTicketId, onSelectTicket }: TicketListProps
   };
 
   return (
-    <div className="w-full md:w-72 lg:w-80 border-r border-border flex flex-col bg-card/50">
+    <div className="w-full md:w-64 lg:w-72 border-r border-border flex flex-col bg-card/50 shrink-0 overflow-hidden">
       {/* Header */}
-      <div className="p-3 md:p-4 border-b border-border space-y-3">
-        <h2 className="font-semibold">Tickets</h2>
+      <div className="p-3 border-b border-border space-y-2 shrink-0">
+        <h2 className="font-semibold text-sm">Tickets</h2>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-full">
-            <Filter className="h-4 w-4 mr-2" />
-            <SelectValue placeholder="Filter by status" />
+          <SelectTrigger className="w-full h-8 text-xs">
+            <Filter className="h-3 w-3 mr-2" />
+            <SelectValue placeholder="Filter" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Tickets</SelectItem>
@@ -107,40 +99,34 @@ export function TicketList({ selectedTicketId, onSelectTicket }: TicketListProps
       </div>
 
       {/* Ticket List */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto min-h-0">
         {isLoading ? (
-          <div className="p-4 text-center text-muted-foreground">
-            Loading tickets...
-          </div>
+          <div className="p-3 text-center text-muted-foreground text-sm">Loading...</div>
         ) : tickets.length === 0 ? (
-          <div className="p-4 text-center text-muted-foreground">
-            No tickets found
-          </div>
+          <div className="p-3 text-center text-muted-foreground text-sm">No tickets</div>
         ) : (
           tickets.map((ticket) => (
             <button
               key={ticket.id}
               onClick={() => onSelectTicket(ticket.id)}
               className={cn(
-                "w-full p-4 text-left border-b border-border hover:bg-muted/50 transition-colors",
+                "w-full p-3 text-left border-b border-border hover:bg-muted/50 transition-colors",
                 selectedTicketId === ticket.id && "bg-muted"
               )}
             >
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <div className="flex items-center gap-2">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium text-sm truncate">
-                    {ticket.visitor_name}
-                  </span>
+              <div className="flex items-start justify-between gap-2 mb-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <User className="h-3 w-3 text-muted-foreground shrink-0" />
+                  <span className="font-medium text-xs truncate">{ticket.visitor_name}</span>
                 </div>
-                <Badge variant="outline" className={getStatusColor(ticket.status)}>
+                <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0", getStatusColor(ticket.status))}>
                   {ticket.status.replace("_", " ")}
                 </Badge>
               </div>
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{ticket.department?.name}</span>
-                <span className="flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
+              <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                <span className="truncate">{ticket.department?.name}</span>
+                <span className="flex items-center gap-1 shrink-0">
+                  <Clock className="h-2.5 w-2.5" />
                   {formatDistanceToNow(new Date(ticket.updated_at), { addSuffix: true })}
                 </span>
               </div>
