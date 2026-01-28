@@ -1,8 +1,22 @@
 interface TypingIndicatorProps {
   label?: string;
+  variant?: "embed" | "dashboard";
 }
 
-export function TypingIndicator({ label = "typing" }: TypingIndicatorProps) {
+export function TypingIndicator({ label = "typing", variant = "embed" }: TypingIndicatorProps) {
+  if (variant === "dashboard") {
+    return (
+      <div className="flex items-center gap-2 text-muted-foreground text-sm animate-fade-in">
+        <div className="flex gap-1">
+          <span className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "0s" }} />
+          <span className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "0.15s" }} />
+          <span className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "0.3s" }} />
+        </div>
+        <span>{label}</span>
+      </div>
+    );
+  }
+
   return (
     <div style={{ 
       display: "flex", 
@@ -10,7 +24,7 @@ export function TypingIndicator({ label = "typing" }: TypingIndicatorProps) {
       gap: "8px",
       padding: "8px 12px",
       color: "rgba(255,255,255,0.6)",
-      fontSize: "12px"
+      fontSize: "13px"
     }}>
       <div style={{ display: "flex", gap: "3px" }}>
         <span 

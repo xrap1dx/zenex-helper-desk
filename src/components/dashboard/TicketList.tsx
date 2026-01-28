@@ -86,9 +86,9 @@ export function TicketList({ selectedTicketId, onSelectTicket }: TicketListProps
   };
 
   return (
-    <div className="w-80 border-r border-border flex flex-col">
+    <div className="w-full md:w-72 lg:w-80 border-r border-border flex flex-col bg-card/50">
       {/* Header */}
-      <div className="p-4 border-b border-border space-y-3">
+      <div className="p-3 md:p-4 border-b border-border space-y-3">
         <h2 className="font-semibold">Tickets</h2>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-full">

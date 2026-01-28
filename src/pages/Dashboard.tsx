@@ -34,14 +34,14 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="min-h-screen bg-background flex w-full">
       <Sidebar
         currentView={currentView}
         onViewChange={setCurrentView}
         staffRole={staff.role}
       />
 
-      <main className="flex-1 flex">
+      <main className="flex-1 flex min-w-0">
         {currentView === "tickets" && (
           <>
             <TicketList

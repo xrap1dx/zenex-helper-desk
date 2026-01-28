@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, Zap, Lock, User } from "lucide-react";
+import { Loader2, Lock, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,9 +44,11 @@ export default function StaffLogin() {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2">
-            <div className="w-12 h-12 rounded-xl gradient-bg flex items-center justify-center glow-primary">
-              <Zap className="h-7 w-7 text-primary-foreground" />
-            </div>
+            <img 
+              src="/zenex-logo.png" 
+              alt="Zenex" 
+              className="w-12 h-12 rounded-xl object-contain"
+            />
           </div>
           <h1 className="mt-4 text-2xl font-bold gradient-text">Zenex Staff Portal</h1>
           <p className="mt-2 text-muted-foreground">Sign in to access the dashboard</p>

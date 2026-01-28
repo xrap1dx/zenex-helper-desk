@@ -23,6 +23,8 @@ import {
   SelectLabel,
 } from "@/components/ui/select";
 import { listManagers } from "@/lib/auth";
+import { TicketNotes } from "./TicketNotes";
+import { TypingIndicator } from "@/components/chat/TypingIndicator";
 
 interface Message {
   id: string;
@@ -171,7 +173,9 @@ export function TicketChat({ ticketId }: TicketChatProps) {
   };
 
   const updateTicketStatus = async (status: "open" | "in_progress" | "waiting" | "resolved" | "closed") => {
-    if (!ticketId) return;
+    if (!ticketId || !staff) return;
+    const oldStatus = ticket?.status;
+    
     await supabase
       .from("tickets")
       .update({
@@ -179,27 +183,57 @@ export function TicketChat({ ticketId }: TicketChatProps) {
         closed_at: status === "closed" ? new Date().toISOString() : null,
       })
       .eq("id", ticketId);
+    
+    // Add internal note for status change
+    await supabase.from("ticket_notes").insert({
+      ticket_id: ticketId,
+      staff_id: staff.id,
+      note_type: "status_change",
+      content: `Status changed from ${oldStatus} to ${status}`,
+      metadata: { staff_name: staff.display_name, old_status: oldStatus, new_status: status },
+    });
+    
     fetchTicket();
   };
 
   const transferTicket = async (target: string) => {
-    if (!ticketId) return;
+    if (!ticketId || !staff) return;
     
     // Check if it's a manager ID or department ID
     const isManager = managers.some(m => m.id === target);
     
     if (isManager) {
+      const targetManager = managers.find(m => m.id === target);
       // Refer to manager
       await supabase
         .from("tickets")
         .update({ referred_to: target, assigned_to: target })
         .eq("id", ticketId);
+      
+      // Add internal note for refer
+      await supabase.from("ticket_notes").insert({
+        ticket_id: ticketId,
+        staff_id: staff.id,
+        note_type: "refer",
+        content: `Referred to ${targetManager?.display_name || "manager"}`,
+        metadata: { staff_name: staff.display_name, target_staff: targetManager?.display_name },
+      });
     } else {
+      const targetDept = departments.find(d => d.id === target);
       // Transfer to department
       await supabase
         .from("tickets")
         .update({ department_id: target, assigned_to: null, referred_to: null })
         .eq("id", ticketId);
+      
+      // Add internal note for transfer
+      await supabase.from("ticket_notes").insert({
+        ticket_id: ticketId,
+        staff_id: staff.id,
+        note_type: "transfer",
+        content: `Transferred to ${targetDept?.name || "department"}`,
+        metadata: { staff_name: staff.display_name, target_department: targetDept?.name },
+      });
     }
     fetchTicket();
   };
@@ -245,24 +279,26 @@ export function TicketChat({ ticketId }: TicketChatProps) {
     <div className="flex-1 flex flex-col">
       {/* Header */}
       {ticket && (
-        <div className="p-4 border-b border-border bg-card">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+        <div className="p-3 md:p-4 border-b border-border bg-card">
+          <div className="flex flex-col md:flex-row md:items-center gap-3">
+            <div className="flex items-center gap-3 flex-1">
+              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
                 <User className="h-5 w-5 text-muted-foreground" />
               </div>
-              <div>
-                <h3 className="font-semibold">{ticket.visitor_name}</h3>
-                <p className="text-xs text-muted-foreground">
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold truncate">{ticket.visitor_name}</h3>
+                <p className="text-xs text-muted-foreground truncate">
                   {ticket.department?.name}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <TicketNotes ticketId={ticketId} />
               <Select onValueChange={transferTicket}>
-                <SelectTrigger className="w-[200px]">
-                  <ArrowRight className="h-4 w-4 mr-2" />
-                  Transfer / Refer
+                <SelectTrigger className="w-auto min-w-[140px]">
+                  <ArrowRight className="h-4 w-4 mr-1" />
+                  <span className="hidden sm:inline">Transfer / Refer</span>
+                  <span className="sm:hidden">Transfer</span>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
@@ -304,8 +340,8 @@ export function TicketChat({ ticketId }: TicketChatProps) {
                 onClick={() => updateTicketStatus("resolved")}
                 disabled={ticket.status === "resolved" || ticket.status === "closed"}
               >
-                <CheckCircle className="h-4 w-4 mr-1" />
-                Resolve
+                <CheckCircle className="h-4 w-4 sm:mr-1" />
+                <span className="hidden sm:inline">Resolve</span>
               </Button>
               <Button
                 variant="outline"
@@ -313,8 +349,8 @@ export function TicketChat({ ticketId }: TicketChatProps) {
                 onClick={() => updateTicketStatus("closed")}
                 disabled={ticket.status === "closed"}
               >
-                <XCircle className="h-4 w-4 mr-1" />
-                Close
+                <XCircle className="h-4 w-4 sm:mr-1" />
+                <span className="hidden sm:inline">Close</span>
               </Button>
             </div>
           </div>
