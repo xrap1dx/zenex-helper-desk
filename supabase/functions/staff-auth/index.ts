@@ -21,9 +21,10 @@ serve(async (req) => {
   }
 
   try {
+    // Use the USER's Supabase, not Lovable Cloud's
     const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('USER_SUPABASE_URL') ?? Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('USER_SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
     const { action, ...params } = await req.json();
