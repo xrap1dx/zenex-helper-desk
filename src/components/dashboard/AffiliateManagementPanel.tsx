@@ -38,8 +38,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Loader2, Search, Building2, MousePointerClick, Link2, Ban, CheckCircle } from "lucide-react";
+import { Plus, Trash2, Loader2, Search, Building2, MousePointerClick, Link2, Ban, CheckCircle, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { CompanyMembersDialog } from "./CompanyMembersDialog";
 
 interface AffiliateCompany {
   id: string;
@@ -59,6 +60,7 @@ export function AffiliateManagementPanel() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [membersCompany, setMembersCompany] = useState<{ id: string; name: string } | null>(null);
   const { toast } = useToast();
 
   // New company form
@@ -275,27 +277,38 @@ export function AffiliateManagementPanel() {
                       </Select>
                     </TableCell>
                     <TableCell>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete {company.name}?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will permanently remove the company, its members, and all click data.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDelete(company.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title="Manage Members"
+                          onClick={() => setMembersCompany({ id: company.id, name: company.name })}
+                        >
+                          <Users className="h-4 w-4" />
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete {company.name}?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will permanently remove the company, its members, and all click data.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDelete(company.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -303,6 +316,16 @@ export function AffiliateManagementPanel() {
             </TableBody>
           </Table>
         </div>
+
+        {/* Members Dialog */}
+        {membersCompany && (
+          <CompanyMembersDialog
+            companyId={membersCompany.id}
+            companyName={membersCompany.name}
+            open={!!membersCompany}
+            onOpenChange={(open) => { if (!open) setMembersCompany(null); }}
+          />
+        )}
       </div>
     </div>
   );
