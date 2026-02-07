@@ -23,10 +23,12 @@ export default function Embed() {
       const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
       const { data } = await supabase
         .from("staff_public")
-        .select("is_online, last_seen")
+        .select("is_online, last_seen, role")
         .eq("is_online", true)
         .gte("last_seen", twoMinutesAgo);
-      setAgentsOnline((data?.length || 0) > 0);
+      // Only count non-affiliate staff
+      const agents = (data || []).filter(s => s.role !== "affiliate");
+      setAgentsOnline(agents.length > 0);
     };
     
     checkAgents();
