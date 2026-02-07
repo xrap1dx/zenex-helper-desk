@@ -517,7 +517,7 @@ export function TicketChat({ ticketId, onTicketDeleted }: TicketChatProps) {
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogCancel className="hover:bg-accent">Cancel</AlertDialogCancel>
                     <AlertDialogAction onClick={deleteTicket} className="bg-destructive hover:bg-destructive/90">
                       Delete
                     </AlertDialogAction>
