@@ -389,9 +389,10 @@ serve(async (req) => {
           );
         }
 
-        // Clear foreign key references first
+        // Clear ALL foreign key references first
         await supabase.from('staff_departments').delete().eq('staff_id', staffId);
         await supabase.from('ticket_notes').delete().eq('staff_id', staffId);
+        await supabase.from('messages').update({ sender_id: null }).eq('sender_id', staffId);
         await supabase.from('tickets').update({ assigned_to: null }).eq('assigned_to', staffId);
         await supabase.from('tickets').update({ referred_to: null }).eq('referred_to', staffId);
         await supabase.from('affiliate_members').delete().eq('staff_id', staffId);
