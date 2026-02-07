@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Send, Loader2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { supabase } from "@/integrations/supabase/client";
+import { userSupabase as supabase } from "@/lib/supabaseClient";
 import { cn } from "@/lib/utils";
 
 interface Message {

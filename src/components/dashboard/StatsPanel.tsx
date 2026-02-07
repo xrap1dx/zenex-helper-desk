@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { userSupabase as supabase } from "@/lib/supabaseClient";
 import { Loader2, Ticket, Users, Building2, Clock, CheckCircle, XCircle, AlertCircle, Link2, MousePointerClick, Trophy } from "lucide-react";
 
 const AFFILIATE_DEPT_NAMES = ["Affiliate Program", "Affiliate Program Management"];

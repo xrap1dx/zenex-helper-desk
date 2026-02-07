@@ -3,7 +3,7 @@ import { MessageCircle, X, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChatWindow } from "./ChatWindow";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
+import { userSupabase as supabase } from "@/lib/supabaseClient";
 
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);

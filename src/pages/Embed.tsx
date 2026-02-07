@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { MessageCircle, X, Minimize2 } from "lucide-react";
 import { EmbedChatWindow } from "@/components/chat/EmbedChatWindow";
-import { supabase } from "@/integrations/supabase/client";
+import { userSupabase as supabase } from "@/lib/supabaseClient";
 
 export default function Embed() {
   const [isOpen, setIsOpen] = useState(false);
