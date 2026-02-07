@@ -9,9 +9,11 @@ import { AccountPanel } from "@/components/dashboard/AccountPanel";
 import { StatsPanel } from "@/components/dashboard/StatsPanel";
 import { TicketManagementPanel } from "@/components/dashboard/TicketManagementPanel";
 import { WelcomePanel } from "@/components/dashboard/WelcomePanel";
+import { AffiliatePanel } from "@/components/dashboard/AffiliatePanel";
+import { AffiliateManagementPanel } from "@/components/dashboard/AffiliateManagementPanel";
 import { Loader2 } from "lucide-react";
 
-export type DashboardView = "welcome" | "tickets" | "admin" | "account" | "stats" | "ticket-management" | "affiliates";
+export type DashboardView = "welcome" | "tickets" | "admin" | "account" | "stats" | "ticket-management" | "affiliates" | "affiliate-management";
 
 export default function Dashboard() {
   const { staff, isLoading } = useStaff();
@@ -50,7 +52,8 @@ export default function Dashboard() {
         {currentView === "stats" && <StatsPanel />}
         {currentView === "ticket-management" && staff.role === "admin" && <TicketManagementPanel />}
         {currentView === "admin" && staff.role === "admin" && <AdminPanel />}
-        {currentView === "affiliates" && <div className="flex-1 p-6"><h1 className="text-2xl font-bold">Affiliate Program</h1><p className="text-muted-foreground text-sm mt-1">Coming soon — backend tables are ready.</p></div>}
+        {currentView === "affiliates" && <AffiliatePanel />}
+        {currentView === "affiliate-management" && staff.role === "admin" && <AffiliateManagementPanel />}
       </main>
     </div>
   );

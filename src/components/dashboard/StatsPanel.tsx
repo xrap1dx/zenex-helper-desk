@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Ticket, Users, Building2, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { Loader2, Ticket, Users, Building2, Clock, CheckCircle, XCircle, AlertCircle, Link2, MousePointerClick, Trophy } from "lucide-react";
+
+const AFFILIATE_DEPT_NAMES = ["Affiliate Program", "Affiliate Program Management"];
 
 interface Stats {
   totalTickets: number;
@@ -12,6 +14,10 @@ interface Stats {
   totalStaff: number;
   onlineStaff: number;
   departmentStats: { name: string; count: number }[];
+  totalAffiliates: number;
+  totalAffiliateCompanies: number;
+  totalAffiliateClicks: number;
+  topAffiliate: { name: string; clicks: number } | null;
 }
 
 export function StatsPanel() {
@@ -25,22 +31,42 @@ export function StatsPanel() {
   const fetchStats = async () => {
     setIsLoading(true);
 
-    const [ticketsRes, staffRes, deptsRes] = await Promise.all([
+    const [ticketsRes, staffRes, deptsRes, affiliateCompaniesRes, affiliateMembersRes] = await Promise.all([
       supabase.from("tickets").select("status, department_id"),
-      supabase.from("staff_public").select("is_online, last_seen").not('role', 'eq', 'affiliate'),
+      supabase.from("staff_public").select("is_online, last_seen, role"),
       supabase.from("departments").select("id, name"),
+      supabase.from("affiliate_companies").select("id, name, clicks"),
+      supabase.from("affiliate_members").select("id"),
     ]);
 
     const tickets = ticketsRes.data || [];
     const staffList = staffRes.data || [];
     const departments = deptsRes.data || [];
+    const affiliateCompanies = affiliateCompaniesRes.data || [];
+    const affiliateMembers = affiliateMembersRes.data || [];
 
     const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
 
-    const departmentStats = departments.map(dept => ({
+    // Filter out affiliate departments from ticket stats
+    const affiliateDeptIds = departments
+      .filter(d => AFFILIATE_DEPT_NAMES.includes(d.name))
+      .map(d => d.id);
+
+    const nonAffiliateDepts = departments.filter(d => !AFFILIATE_DEPT_NAMES.includes(d.name));
+
+    const departmentStats = nonAffiliateDepts.map(dept => ({
       name: dept.name,
       count: tickets.filter(t => t.department_id === dept.id).length,
     })).sort((a, b) => b.count - a.count);
+
+    // Non-affiliate staff for counts
+    const nonAffiliateStaff = staffList.filter(s => s.role !== "affiliate");
+
+    // Affiliate stats
+    const totalAffiliateClicks = affiliateCompanies.reduce((sum, c) => sum + (c.clicks || 0), 0);
+    const topAffiliate = affiliateCompanies.length > 0
+      ? affiliateCompanies.reduce((top, c) => (c.clicks || 0) > (top.clicks || 0) ? c : top)
+      : null;
 
     setStats({
       totalTickets: tickets.length,
@@ -49,9 +75,13 @@ export function StatsPanel() {
       resolvedTickets: tickets.filter(t => t.status === "resolved").length,
       closedTickets: tickets.filter(t => t.status === "closed").length,
       waitingTickets: tickets.filter(t => t.status === "waiting").length,
-      totalStaff: staffList.length,
-      onlineStaff: staffList.filter(s => s.is_online && s.last_seen && s.last_seen >= oneMinuteAgo).length,
+      totalStaff: nonAffiliateStaff.length,
+      onlineStaff: nonAffiliateStaff.filter(s => s.is_online && s.last_seen && s.last_seen >= oneMinuteAgo).length,
       departmentStats,
+      totalAffiliates: affiliateMembers.length,
+      totalAffiliateCompanies: affiliateCompanies.length,
+      totalAffiliateClicks,
+      topAffiliate: topAffiliate ? { name: topAffiliate.name, clicks: topAffiliate.clicks || 0 } : null,
     });
 
     setIsLoading(false);
@@ -76,6 +106,13 @@ export function StatsPanel() {
     { label: "Staff Online", value: stats.onlineStaff, icon: Users, color: "text-green-400" },
   ];
 
+  const affiliateCards = [
+    { label: "Affiliate Companies", value: stats.totalAffiliateCompanies, icon: Building2, color: "text-primary" },
+    { label: "Total Affiliates", value: stats.totalAffiliates, icon: Link2, color: "text-blue-400" },
+    { label: "Total Clicks", value: stats.totalAffiliateClicks, icon: MousePointerClick, color: "text-green-400" },
+    { label: "Top Affiliate", value: stats.topAffiliate ? stats.topAffiliate.name : "—", subValue: stats.topAffiliate ? `${stats.topAffiliate.clicks} clicks` : "", icon: Trophy, color: "text-yellow-400" },
+  ];
+
   return (
     <div className="flex-1 p-6 overflow-auto">
       <div className="max-w-5xl mx-auto space-y-6">
@@ -84,7 +121,7 @@ export function StatsPanel() {
           <p className="text-muted-foreground text-sm">Overview of support system activity.</p>
         </div>
 
-        {/* Stat Cards */}
+        {/* Ticket Stat Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {statCards.map((stat) => (
             <div key={stat.label} className="rounded-xl border border-border bg-card p-4">
@@ -121,6 +158,28 @@ export function StatsPanel() {
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        {/* Affiliate Stats */}
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Link2 className="h-5 w-5 text-primary" />
+            Affiliate Program
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {affiliateCards.map((stat) => (
+              <div key={stat.label} className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <stat.icon className={`h-4 w-4 ${stat.color}`} />
+                  <span className="text-xs text-muted-foreground">{stat.label}</span>
+                </div>
+                <p className="text-2xl font-bold">{stat.value}</p>
+                {"subValue" in stat && stat.subValue && (
+                  <p className="text-xs text-muted-foreground">{stat.subValue}</p>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       </div>

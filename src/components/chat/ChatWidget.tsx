@@ -1,12 +1,30 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MessageCircle, X, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChatWindow } from "./ChatWindow";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [agentsOnline, setAgentsOnline] = useState(false);
+
+  useEffect(() => {
+    const checkAgents = async () => {
+      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+      const { data } = await supabase
+        .from("staff_public")
+        .select("is_online, last_seen, role")
+        .eq("is_online", true)
+        .gte("last_seen", twoMinutesAgo);
+      const agents = (data || []).filter((s: any) => s.role !== "affiliate");
+      setAgentsOnline(agents.length > 0);
+    };
+    checkAgents();
+    const interval = setInterval(checkAgents, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <>
@@ -21,7 +39,10 @@ export function ChatWidget() {
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 gradient-bg">
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+              <div className={cn(
+                "w-2 h-2 rounded-full",
+                agentsOnline ? "bg-green-400 animate-pulse" : "bg-red-400"
+              )} />
               <span className="font-semibold text-primary-foreground">Zenex Support</span>
             </div>
             <div className="flex items-center gap-1">

@@ -1,4 +1,4 @@
-import { MessageSquare, LogOut, Users, UserCog, BarChart3, FolderCog, ChevronDown, Home, Link2 } from "lucide-react";
+import { MessageSquare, LogOut, Users, UserCog, BarChart3, FolderCog, ChevronDown, Home, Link2, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useStaff } from "@/contexts/StaffContext";
 import { useNavigate } from "react-router-dom";
@@ -23,7 +23,8 @@ interface NavItem {
 const mainNavItems: NavItem[] = [
   { id: "welcome", label: "Home", icon: Home },
   { id: "tickets", label: "Tickets", icon: MessageSquare, roles: ["admin", "manager", "associate"] },
-  { id: "affiliates", label: "Affiliate Program", icon: Link2, roles: ["admin", "affiliate"] },
+  { id: "affiliates", label: "Affiliate Program", icon: Link2, roles: ["affiliate"] },
+  { id: "affiliate-management", label: "Affiliate Mgmt", icon: Settings2, roles: ["admin"] },
 ];
 
 const adminNavItems: NavItem[] = [
