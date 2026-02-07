@@ -360,8 +360,10 @@ export function TicketChat({ ticketId, onTicketDeleted }: TicketChatProps) {
         return `${staffName} changed status: ${note.metadata?.old_status} → ${note.metadata?.new_status}`;
       case "assigned":
         return `${staffName} was assigned to this ticket`;
+      case "note":
+        return `${staffName} — ${note.content}`;
       default:
-        return note.content;
+        return `${staffName} — ${note.content}`;
     }
   };
 
@@ -398,23 +400,39 @@ export function TicketChat({ ticketId, onTicketDeleted }: TicketChatProps) {
               {/* Notes */}
               <Dialog open={isNotesOpen} onOpenChange={setIsNotesOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 px-2 text-xs">
-                    <StickyNote className="h-3 w-3 mr-1" />
+                  <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1">
+                    <StickyNote className="h-3 w-3" />
                     Notes
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-h-[80vh] flex flex-col">
                   <DialogHeader>
-                    <DialogTitle>Add Internal Note</DialogTitle>
+                    <DialogTitle>Internal Notes</DialogTitle>
                   </DialogHeader>
-                  <div className="space-y-4">
+                  <div className="flex-1 overflow-y-auto space-y-2 max-h-[40vh]">
+                    {notes.filter(n => n.note_type === "note").length === 0 ? (
+                      <p className="text-xs text-muted-foreground text-center py-4">No notes yet</p>
+                    ) : (
+                      notes.filter(n => n.note_type === "note").map(note => (
+                        <div key={note.id} className="p-2 rounded-md bg-muted/50 text-xs">
+                          <span className="font-medium">{note.metadata?.staff_name || "Staff"}</span>
+                          <span className="text-muted-foreground"> — {note.content}</span>
+                          <span className="block text-[10px] text-muted-foreground mt-1">
+                            {new Date(note.created_at).toLocaleString()}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="space-y-2 pt-2 border-t border-border">
                     <Textarea
                       placeholder="Add a note visible only to staff..."
                       value={newNote}
                       onChange={(e) => setNewNote(e.target.value)}
-                      rows={4}
+                      rows={3}
+                      className="text-sm"
                     />
-                    <Button onClick={addNote} disabled={!newNote.trim()} className="w-full">
+                    <Button onClick={addNote} disabled={!newNote.trim()} size="sm" className="w-full">
                       Add Note
                     </Button>
                   </div>
@@ -423,8 +441,8 @@ export function TicketChat({ ticketId, onTicketDeleted }: TicketChatProps) {
 
               {/* Transfer */}
               <Select onValueChange={transferTicket}>
-                <SelectTrigger className="h-7 w-auto min-w-[80px] text-xs px-2">
-                  <ArrowRight className="h-3 w-3 mr-1" />
+                <SelectTrigger className="h-7 w-auto text-xs px-2 border-0 bg-transparent hover:bg-accent gap-1 [&>svg:last-child]:hidden">
+                  <ArrowRight className="h-3 w-3" />
                   Transfer
                 </SelectTrigger>
                 <SelectContent>
@@ -441,8 +459,8 @@ export function TicketChat({ ticketId, onTicketDeleted }: TicketChatProps) {
               {/* Refer to Manager */}
               {managers.length > 0 && (
                 <Select onValueChange={referToManager}>
-                  <SelectTrigger className="h-7 w-auto min-w-[70px] text-xs px-2">
-                    <UserCheck className="h-3 w-3 mr-1" />
+                  <SelectTrigger className="h-7 w-auto text-xs px-2 border-0 bg-transparent hover:bg-accent gap-1 [&>svg:last-child]:hidden">
+                    <UserCheck className="h-3 w-3" />
                     Refer
                   </SelectTrigger>
                   <SelectContent>
@@ -462,32 +480,32 @@ export function TicketChat({ ticketId, onTicketDeleted }: TicketChatProps) {
 
               {/* Resolve */}
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
-                className="h-7 px-2 text-xs"
+                className="h-7 px-2 text-xs gap-1"
                 onClick={() => updateTicketStatus("resolved")}
                 disabled={ticket.status === "resolved" || ticket.status === "closed"}
               >
-                <CheckCircle className="h-3 w-3 mr-1" />
+                <CheckCircle className="h-3 w-3" />
                 Resolve
               </Button>
 
               {/* Close */}
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
-                className="h-7 px-2 text-xs"
+                className="h-7 px-2 text-xs gap-1"
                 onClick={() => updateTicketStatus("closed")}
                 disabled={ticket.status === "closed"}
               >
-                <XCircle className="h-3 w-3 mr-1" />
+                <XCircle className="h-3 w-3" />
                 Close
               </Button>
 
               {/* Delete */}
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 px-2 text-xs text-destructive hover:text-destructive">
+                  <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-destructive hover:text-destructive gap-0">
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </AlertDialogTrigger>
