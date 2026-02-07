@@ -9,7 +9,7 @@ export interface Staff {
   id: string;
   username: string;
   display_name: string;
-  role: "admin" | "manager" | "associate";
+  role: "admin" | "manager" | "associate" | "affiliate";
   departments?: StaffDepartment[];
   is_online: boolean;
   last_seen?: string;
@@ -55,7 +55,7 @@ export async function createStaffMember(
   username: string,
   password: string,
   displayName: string,
-  role: "admin" | "manager" | "associate",
+  role: "admin" | "manager" | "associate" | "affiliate",
   departmentIds: string[],
   createdBy: string
 ): Promise<{ staff: Staff | null; error: string | null }> {

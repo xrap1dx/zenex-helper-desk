@@ -27,7 +27,7 @@ export function StatsPanel() {
 
     const [ticketsRes, staffRes, deptsRes] = await Promise.all([
       supabase.from("tickets").select("status, department_id"),
-      supabase.from("staff_public").select("is_online, last_seen"),
+      supabase.from("staff_public").select("is_online, last_seen").not('role', 'eq', 'affiliate'),
       supabase.from("departments").select("id, name"),
     ]);
 
@@ -35,7 +35,7 @@ export function StatsPanel() {
     const staffList = staffRes.data || [];
     const departments = deptsRes.data || [];
 
-    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
 
     const departmentStats = departments.map(dept => ({
       name: dept.name,
@@ -50,7 +50,7 @@ export function StatsPanel() {
       closedTickets: tickets.filter(t => t.status === "closed").length,
       waitingTickets: tickets.filter(t => t.status === "waiting").length,
       totalStaff: staffList.length,
-      onlineStaff: staffList.filter(s => s.is_online && s.last_seen && s.last_seen >= twoMinutesAgo).length,
+      onlineStaff: staffList.filter(s => s.is_online && s.last_seen && s.last_seen >= oneMinuteAgo).length,
       departmentStats,
     });
 

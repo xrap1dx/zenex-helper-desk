@@ -41,7 +41,7 @@ interface StaffMember {
   id: string;
   username: string;
   display_name: string;
-  role: "admin" | "manager" | "associate";
+  role: "admin" | "manager" | "associate" | "affiliate";
   departments: { id: string; name: string }[];
   is_online: boolean;
   created_at: string;
@@ -93,6 +93,16 @@ const roleDetails: Record<string, RoleInfo> = {
       "Close resolved tickets",
       "Refer tickets to Managers",
       "Transfer to any department",
+    ],
+  },
+  affiliate: {
+    name: "Affiliate",
+    icon: <Headphones className="h-4 w-4" />,
+    description: "Affiliate program member",
+    permissions: [
+      "View affiliate dashboard",
+      "Track referral statistics",
+      "Access company link details",
     ],
   },
 };
@@ -155,7 +165,7 @@ export function AdminPanel() {
       newUsername,
       newPassword,
       newDisplayName,
-      selectedRole as "admin" | "manager" | "associate",
+      selectedRole as "admin" | "manager" | "associate" | "affiliate",
       selectedDepartments,
       currentStaff.id
     );
@@ -206,7 +216,7 @@ export function AdminPanel() {
     }
   };
 
-  const handleUpdateRole = async (staffId: string, role: "admin" | "manager" | "associate") => {
+  const handleUpdateRole = async (staffId: string, role: "admin" | "manager" | "associate" | "affiliate") => {
     const { error } = await updateStaffMember(staffId, { role });
     if (!error) {
       toast({
@@ -464,7 +474,7 @@ export function AdminPanel() {
                   <TableCell>
                     <Select
                       value={member.role}
-                      onValueChange={(v) => handleUpdateRole(member.id, v as "admin" | "manager" | "associate")}
+                      onValueChange={(v) => handleUpdateRole(member.id, v as "admin" | "manager" | "associate" | "affiliate")}
                       disabled={member.id === currentStaff?.id}
                     >
                       <SelectTrigger className="w-[140px]">
