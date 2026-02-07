@@ -14,6 +14,132 @@ export type Database = {
   }
   public: {
     Tables: {
+      affiliate_clicks: {
+        Row: {
+          company_id: string
+          created_at: string
+          id: string
+          ip_hash: string | null
+          referrer: string | null
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          id?: string
+          ip_hash?: string | null
+          referrer?: string | null
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          id?: string
+          ip_hash?: string | null
+          referrer?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_clicks_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      affiliate_companies: {
+        Row: {
+          clicks: number
+          code: string
+          created_at: string
+          created_by: string | null
+          id: string
+          link: string | null
+          name: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          clicks?: number
+          code: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          link?: string | null
+          name: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          clicks?: number
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          link?: string | null
+          name?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_companies_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_companies_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "staff_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      affiliate_members: {
+        Row: {
+          company_id: string
+          created_at: string
+          id: string
+          staff_id: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          id?: string
+          staff_id: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          id?: string
+          staff_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_members_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_members_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_members_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       departments: {
         Row: {
           created_at: string
@@ -457,7 +583,7 @@ export type Database = {
       }
     }
     Enums: {
-      staff_role: "admin" | "manager" | "associate"
+      staff_role: "admin" | "manager" | "associate" | "affiliate"
       ticket_status: "open" | "in_progress" | "waiting" | "resolved" | "closed"
     }
     CompositeTypes: {
@@ -586,7 +712,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      staff_role: ["admin", "manager", "associate"],
+      staff_role: ["admin", "manager", "associate", "affiliate"],
       ticket_status: ["open", "in_progress", "waiting", "resolved", "closed"],
     },
   },
