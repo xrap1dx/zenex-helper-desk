@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
 import { Staff, loginStaff, logoutStaff } from "@/lib/auth";
-import { supabase } from "@/integrations/supabase/client";
+import { userSupabase as supabase } from "@/lib/supabaseClient";
 
 interface StaffContextType {
   staff: Staff | null;

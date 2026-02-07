@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Send, Loader2, ArrowLeft } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { userSupabase as supabase } from "@/lib/supabaseClient";
 import { TypingIndicator } from "./TypingIndicator";
 
 // Polyfill for crypto.randomUUID

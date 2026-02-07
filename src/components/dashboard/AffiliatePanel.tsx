@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { userSupabase as supabase } from "@/lib/supabaseClient";
 import { useStaff } from "@/contexts/StaffContext";
 import { Loader2, Link2, MousePointerClick, Building2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
