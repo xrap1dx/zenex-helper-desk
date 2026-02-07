@@ -88,10 +88,12 @@ export function AffiliateManagementPanel() {
       return;
     }
     setIsSaving(true);
+    const code = newCode.trim();
+    const autoLink = `https://zenex.site/${code}`;
     const { error } = await supabase.from("affiliate_companies").insert({
       name: newName.trim(),
-      code: newCode.trim(),
-      link: newLink.trim() || null,
+      code,
+      link: autoLink,
       created_by: staff?.id || null,
     });
 
@@ -181,8 +183,8 @@ export function AffiliateManagementPanel() {
                   <Input placeholder="e.g. ACME2025" value={newCode} onChange={(e) => setNewCode(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Link (optional)</Label>
-                  <Input placeholder="e.g. https://zenex.site/ACME2025" value={newLink} onChange={(e) => setNewLink(e.target.value)} />
+                  <Label>Link (auto-generated)</Label>
+                  <Input disabled value={newCode.trim() ? `https://zenex.site/${newCode.trim()}` : "Enter a code above..."} />
                 </div>
                 <Button className="w-full gradient-bg" onClick={handleCreate} disabled={isSaving}>
                   {isSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
