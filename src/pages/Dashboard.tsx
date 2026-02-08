@@ -2,49 +2,60 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useStaff } from "@/contexts/StaffContext";
 import { Sidebar } from "@/components/dashboard/Sidebar";
-import { ChatList } from "@/components/dashboard/ChatList";
-import { ChatView } from "@/components/dashboard/ChatView";
-import { UserManagement } from "@/components/dashboard/UserManagement";
-import { AccountPanel } from "@/components/dashboard/AccountPanel";
-import { StatsPanel } from "@/components/dashboard/StatsPanel";
-import { WelcomePanel } from "@/components/dashboard/WelcomePanel";
+import { TicketList } from "@/components/dashboard/TicketList";
+import { TicketChat } from "@/components/dashboard/TicketChat";
+import { AdminPanel } from "@/components/dashboard/AdminPanel";
 import { Loader2 } from "lucide-react";
 
-export type DashboardView = "welcome" | "chats" | "users" | "stats" | "account";
+export type DashboardView = "tickets" | "admin";
 
 export default function Dashboard() {
   const { staff, isLoading } = useStaff();
   const navigate = useNavigate();
-  const [currentView, setCurrentView] = useState<DashboardView>("welcome");
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [currentView, setCurrentView] = useState<DashboardView>("tickets");
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isLoading && !staff) navigate("/staff");
+    if (!isLoading && !staff) {
+      navigate("/staff");
+    }
   }, [staff, isLoading, navigate]);
 
-  if (isLoading)
+  if (isLoading) {
     return (
       <div className="h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
+  }
 
-  if (!staff) return null;
+  if (!staff) {
+    return null;
+  }
 
   return (
     <div className="h-screen bg-background flex w-full overflow-hidden">
-      <Sidebar currentView={currentView} onViewChange={setCurrentView} />
+      <Sidebar
+        currentView={currentView}
+        onViewChange={setCurrentView}
+        staffRole={staff.role}
+      />
+
       <main className="flex-1 flex min-w-0 overflow-hidden">
-        {currentView === "welcome" && <WelcomePanel />}
-        {currentView === "chats" && (
+        {currentView === "tickets" && (
           <>
-            <ChatList selectedChatId={selectedChatId} onSelectChat={setSelectedChatId} />
-            <ChatView chatId={selectedChatId} onChatDeleted={() => setSelectedChatId(null)} />
+            <TicketList
+              selectedTicketId={selectedTicketId}
+              onSelectTicket={setSelectedTicketId}
+            />
+            <TicketChat 
+              ticketId={selectedTicketId} 
+              onTicketDeleted={() => setSelectedTicketId(null)}
+            />
           </>
         )}
-        {currentView === "users" && staff.role === "admin" && <UserManagement />}
-        {currentView === "stats" && staff.role === "admin" && <StatsPanel />}
-        {currentView === "account" && <AccountPanel />}
+
+        {currentView === "admin" && staff.role === "admin" && <AdminPanel />}
       </main>
     </div>
   );

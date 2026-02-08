@@ -1,32 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { MessageCircle, X, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChatWindow } from "./ChatWindow";
 import { cn } from "@/lib/utils";
-import { userSupabase as supabase } from "@/lib/supabaseClient";
 
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
-  const [agentsOnline, setAgentsOnline] = useState(false);
-
-  useEffect(() => {
-    const checkAgents = async () => {
-      const { data } = await supabase
-        .from("staff_members")
-        .select("status, is_active, is_suspended")
-        .eq("status", "online")
-        .eq("is_active", true)
-        .eq("is_suspended", false);
-      setAgentsOnline((data || []).length > 0);
-    };
-    checkAgents();
-    const interval = setInterval(checkAgents, 30000);
-    return () => clearInterval(interval);
-  }, []);
 
   return (
     <>
+      {/* Chat Window */}
       {isOpen && (
         <div
           className={cn(
@@ -34,16 +18,11 @@ export function ChatWidget() {
             isMinimized && "h-14"
           )}
         >
+          {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 gradient-bg">
             <div className="flex items-center gap-2">
-              <div
-                className={cn(
-                  "w-2 h-2 rounded-full",
-                  agentsOnline ? "bg-green-400 animate-pulse" : "bg-red-400"
-                )}
-              />
+              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
               <span className="font-semibold text-primary-foreground">Zenex Support</span>
-              <span className="text-xs text-primary-foreground/60">Start a conversation</span>
             </div>
             <div className="flex items-center gap-1">
               <Button
@@ -64,10 +43,13 @@ export function ChatWidget() {
               </Button>
             </div>
           </div>
+
+          {/* Chat Content */}
           {!isMinimized && <ChatWindow />}
         </div>
       )}
 
+      {/* Toggle Button */}
       <button
         onClick={() => {
           setIsOpen(!isOpen);
