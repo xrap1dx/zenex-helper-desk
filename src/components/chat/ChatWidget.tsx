@@ -12,14 +12,13 @@ export function ChatWidget() {
 
   useEffect(() => {
     const checkAgents = async () => {
-      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
       const { data } = await supabase
-        .from("staff_public")
-        .select("is_online, last_seen, role")
-        .eq("is_online", true)
-        .gte("last_seen", twoMinutesAgo);
-      const agents = (data || []).filter((s: any) => s.role !== "affiliate");
-      setAgentsOnline(agents.length > 0);
+        .from("staff_members")
+        .select("status, is_active, is_suspended")
+        .eq("status", "online")
+        .eq("is_active", true)
+        .eq("is_suspended", false);
+      setAgentsOnline((data || []).length > 0);
     };
     checkAgents();
     const interval = setInterval(checkAgents, 30000);
@@ -28,7 +27,6 @@ export function ChatWidget() {
 
   return (
     <>
-      {/* Chat Window */}
       {isOpen && (
         <div
           className={cn(
@@ -36,14 +34,16 @@ export function ChatWidget() {
             isMinimized && "h-14"
           )}
         >
-          {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 gradient-bg">
             <div className="flex items-center gap-2">
-              <div className={cn(
-                "w-2 h-2 rounded-full",
-                agentsOnline ? "bg-green-400 animate-pulse" : "bg-red-400"
-              )} />
+              <div
+                className={cn(
+                  "w-2 h-2 rounded-full",
+                  agentsOnline ? "bg-green-400 animate-pulse" : "bg-red-400"
+                )}
+              />
               <span className="font-semibold text-primary-foreground">Zenex Support</span>
+              <span className="text-xs text-primary-foreground/60">Start a conversation</span>
             </div>
             <div className="flex items-center gap-1">
               <Button
@@ -64,13 +64,10 @@ export function ChatWidget() {
               </Button>
             </div>
           </div>
-
-          {/* Chat Content */}
           {!isMinimized && <ChatWindow />}
         </div>
       )}
 
-      {/* Toggle Button */}
       <button
         onClick={() => {
           setIsOpen(!isOpen);

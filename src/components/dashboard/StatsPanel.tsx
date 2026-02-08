@@ -1,23 +1,18 @@
 import { useEffect, useState } from "react";
 import { userSupabase as supabase } from "@/lib/supabaseClient";
-import { Loader2, Ticket, Users, Building2, Clock, CheckCircle, XCircle, AlertCircle, Link2, MousePointerClick, Trophy } from "lucide-react";
-
-const AFFILIATE_DEPT_NAMES = ["Affiliate Program", "Affiliate Program Management"];
+import { listStaffMembers } from "@/lib/auth";
+import { Loader2, MessageSquare, CheckCircle, Clock, TrendingUp, Star } from "lucide-react";
+import type { ChatSession, Staff } from "@/lib/types";
+import { getDepartmentName } from "@/lib/departments";
 
 interface Stats {
-  totalTickets: number;
-  openTickets: number;
-  inProgressTickets: number;
-  resolvedTickets: number;
-  closedTickets: number;
-  waitingTickets: number;
-  totalStaff: number;
-  onlineStaff: number;
-  departmentStats: { name: string; count: number }[];
-  totalAffiliates: number;
-  totalAffiliateCompanies: number;
-  totalAffiliateClicks: number;
-  topAffiliate: { name: string; clicks: number } | null;
+  total: number;
+  active: number;
+  waiting: number;
+  closed: number;
+  todayCount: number;
+  deptBreakdown: { name: string; count: number }[];
+  topAgents: { name: string; chats: number; rating: number }[];
 }
 
 export function StatsPanel() {
@@ -31,57 +26,60 @@ export function StatsPanel() {
   const fetchStats = async () => {
     setIsLoading(true);
 
-    const [ticketsRes, staffRes, deptsRes, affiliateCompaniesRes, affiliateMembersRes] = await Promise.all([
-      supabase.from("tickets").select("status, department_id"),
-      supabase.from("staff_public").select("is_online, last_seen, role"),
-      supabase.from("departments").select("id, name"),
-      supabase.from("affiliate_companies").select("id, name, clicks"),
-      supabase.from("affiliate_members").select("id"),
+    const [chatsRes, staffRes] = await Promise.all([
+      supabase.from("chat_sessions").select("*"),
+      listStaffMembers(),
     ]);
 
-    const tickets = ticketsRes.data || [];
-    const staffList = staffRes.data || [];
-    const departments = deptsRes.data || [];
-    const affiliateCompanies = affiliateCompaniesRes.data || [];
-    const affiliateMembers = affiliateMembersRes.data || [];
+    const chats = (chatsRes.data || []) as ChatSession[];
+    const staffList = staffRes.staff || [];
 
-    const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-    // Filter out affiliate departments from ticket stats
-    const affiliateDeptIds = departments
-      .filter(d => AFFILIATE_DEPT_NAMES.includes(d.name))
-      .map(d => d.id);
+    // Department breakdown
+    const deptMap: Record<string, number> = {};
+    chats.forEach((c) => {
+      const name = getDepartmentName(c.department);
+      deptMap[name] = (deptMap[name] || 0) + 1;
+    });
+    const deptBreakdown = Object.entries(deptMap)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
 
-    const nonAffiliateDepts = departments.filter(d => !AFFILIATE_DEPT_NAMES.includes(d.name));
-
-    const departmentStats = nonAffiliateDepts.map(dept => ({
-      name: dept.name,
-      count: tickets.filter(t => t.department_id === dept.id).length,
-    })).sort((a, b) => b.count - a.count);
-
-    // Non-affiliate staff for counts
-    const nonAffiliateStaff = staffList.filter(s => s.role !== "affiliate");
-
-    // Affiliate stats
-    const totalAffiliateClicks = affiliateCompanies.reduce((sum, c) => sum + (c.clicks || 0), 0);
-    const topAffiliate = affiliateCompanies.length > 0
-      ? affiliateCompanies.reduce((top, c) => (c.clicks || 0) > (top.clicks || 0) ? c : top)
-      : null;
+    // Top agents
+    const agentChats: Record<string, { name: string; chats: number; totalRating: number; ratedCount: number }> = {};
+    chats.forEach((c) => {
+      if (c.assigned_to) {
+        const agent = staffList.find((s) => s.id === c.assigned_to);
+        const name = agent?.full_name || "Unknown";
+        if (!agentChats[c.assigned_to]) {
+          agentChats[c.assigned_to] = { name, chats: 0, totalRating: 0, ratedCount: 0 };
+        }
+        agentChats[c.assigned_to].chats++;
+        if (c.rating != null) {
+          agentChats[c.assigned_to].totalRating += c.rating;
+          agentChats[c.assigned_to].ratedCount++;
+        }
+      }
+    });
+    const topAgents = Object.values(agentChats)
+      .map((a) => ({
+        name: a.name,
+        chats: a.chats,
+        rating: a.ratedCount > 0 ? a.totalRating / a.ratedCount : 0,
+      }))
+      .sort((a, b) => b.chats - a.chats)
+      .slice(0, 10);
 
     setStats({
-      totalTickets: tickets.length,
-      openTickets: tickets.filter(t => t.status === "open").length,
-      inProgressTickets: tickets.filter(t => t.status === "in_progress").length,
-      resolvedTickets: tickets.filter(t => t.status === "resolved").length,
-      closedTickets: tickets.filter(t => t.status === "closed").length,
-      waitingTickets: tickets.filter(t => t.status === "waiting").length,
-      totalStaff: nonAffiliateStaff.length,
-      onlineStaff: nonAffiliateStaff.filter(s => s.is_online && s.last_seen && s.last_seen >= oneMinuteAgo).length,
-      departmentStats,
-      totalAffiliates: affiliateMembers.length,
-      totalAffiliateCompanies: affiliateCompanies.length,
-      totalAffiliateClicks,
-      topAffiliate: topAffiliate ? { name: topAffiliate.name, clicks: topAffiliate.clicks || 0 } : null,
+      total: chats.length,
+      active: chats.filter((c) => c.status === "active").length,
+      waiting: chats.filter((c) => c.status === "waiting").length,
+      closed: chats.filter((c) => c.status === "closed").length,
+      todayCount: chats.filter((c) => new Date(c.created_at) >= today).length,
+      deptBreakdown,
+      topAgents,
     });
 
     setIsLoading(false);
@@ -96,21 +94,10 @@ export function StatsPanel() {
   }
 
   const statCards = [
-    { label: "Total Tickets", value: stats.totalTickets, icon: Ticket, color: "text-primary" },
-    { label: "Open", value: stats.openTickets, icon: AlertCircle, color: "text-yellow-400" },
-    { label: "In Progress", value: stats.inProgressTickets, icon: Clock, color: "text-blue-400" },
-    { label: "Resolved", value: stats.resolvedTickets, icon: CheckCircle, color: "text-green-400" },
-    { label: "Closed", value: stats.closedTickets, icon: XCircle, color: "text-muted-foreground" },
-    { label: "Waiting", value: stats.waitingTickets, icon: Clock, color: "text-orange-400" },
-    { label: "Total Staff", value: stats.totalStaff, icon: Users, color: "text-primary" },
-    { label: "Staff Online", value: stats.onlineStaff, icon: Users, color: "text-green-400" },
-  ];
-
-  const affiliateCards = [
-    { label: "Affiliate Companies", value: stats.totalAffiliateCompanies, icon: Building2, color: "text-primary" },
-    { label: "Total Affiliates", value: stats.totalAffiliates, icon: Link2, color: "text-blue-400" },
-    { label: "Total Clicks", value: stats.totalAffiliateClicks, icon: MousePointerClick, color: "text-green-400" },
-    { label: "Top Affiliate", value: stats.topAffiliate ? stats.topAffiliate.name : "—", subValue: stats.topAffiliate ? `${stats.topAffiliate.clicks} clicks` : "", icon: Trophy, color: "text-yellow-400" },
+    { label: "Total Chats", value: stats.total, icon: MessageSquare, color: "text-primary" },
+    { label: "Resolved", value: stats.closed, icon: CheckCircle, color: "text-green-400" },
+    { label: "In Queue", value: stats.waiting, icon: Clock, color: "text-yellow-400" },
+    { label: "Today", value: stats.todayCount, icon: TrendingUp, color: "text-purple-400" },
   ];
 
   return (
@@ -118,10 +105,9 @@ export function StatsPanel() {
       <div className="max-w-5xl mx-auto space-y-6">
         <div>
           <h1 className="text-2xl font-bold">Statistics</h1>
-          <p className="text-muted-foreground text-sm">Overview of support system activity.</p>
+          <p className="text-muted-foreground text-sm">Monitor support performance and metrics</p>
         </div>
 
-        {/* Ticket Stat Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {statCards.map((stat) => (
             <div key={stat.label} className="rounded-xl border border-border bg-card p-4">
@@ -136,23 +122,22 @@ export function StatsPanel() {
 
         {/* Department Breakdown */}
         <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-          <div className="flex items-center gap-3">
-            <Building2 className="h-5 w-5 text-primary" />
-            <h2 className="font-semibold">Tickets by Department</h2>
-          </div>
+          <h2 className="font-semibold">By Department</h2>
           <div className="space-y-3">
-            {stats.departmentStats.map((dept) => {
-              const percentage = stats.totalTickets > 0 ? (dept.count / stats.totalTickets) * 100 : 0;
+            {stats.deptBreakdown.map((dept) => {
+              const pct = stats.total > 0 ? (dept.count / stats.total) * 100 : 0;
               return (
                 <div key={dept.name} className="space-y-1">
                   <div className="flex items-center justify-between text-sm">
                     <span>{dept.name}</span>
-                    <span className="text-muted-foreground">{dept.count} tickets ({percentage.toFixed(0)}%)</span>
+                    <span className="text-muted-foreground">
+                      {dept.count} ({pct.toFixed(0)}%)
+                    </span>
                   </div>
                   <div className="h-2 bg-muted rounded-full overflow-hidden">
                     <div
                       className="h-full bg-primary rounded-full transition-all"
-                      style={{ width: `${percentage}%` }}
+                      style={{ width: `${pct}%` }}
                     />
                   </div>
                 </div>
@@ -161,25 +146,37 @@ export function StatsPanel() {
           </div>
         </div>
 
-        {/* Affiliate Stats */}
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Link2 className="h-5 w-5 text-primary" />
-            Affiliate Program
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {affiliateCards.map((stat) => (
-              <div key={stat.label} className="rounded-xl border border-border bg-card p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <stat.icon className={`h-4 w-4 ${stat.color}`} />
-                  <span className="text-xs text-muted-foreground">{stat.label}</span>
+        {/* Top Agents */}
+        <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+          <h2 className="font-semibold">Top Agents</h2>
+          <div className="space-y-3">
+            {stats.topAgents.map((agent, i) => (
+              <div
+                key={agent.name}
+                className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50"
+              >
+                <span className="text-xs text-muted-foreground w-6">{i + 1}</span>
+                <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                  <span className="text-xs font-semibold text-primary">
+                    {agent.name.charAt(0).toUpperCase()}
+                  </span>
                 </div>
-                <p className="text-2xl font-bold">{stat.value}</p>
-                {"subValue" in stat && stat.subValue && (
-                  <p className="text-xs text-muted-foreground">{stat.subValue}</p>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm truncate">{agent.name}</p>
+                </div>
+                {agent.rating > 0 && (
+                  <div className="flex items-center gap-1 text-yellow-400">
+                    <Star className="h-3 w-3 fill-current" />
+                    <span className="text-xs">{agent.rating.toFixed(1)}</span>
+                  </div>
                 )}
+                <span className="text-sm font-medium">{agent.chats}</span>
+                <span className="text-xs text-muted-foreground">chats</span>
               </div>
             ))}
+            {stats.topAgents.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">No data yet</p>
+            )}
           </div>
         </div>
       </div>
