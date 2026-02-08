@@ -5,9 +5,12 @@ import { Sidebar } from "@/components/dashboard/Sidebar";
 import { TicketList } from "@/components/dashboard/TicketList";
 import { TicketChat } from "@/components/dashboard/TicketChat";
 import { AdminPanel } from "@/components/dashboard/AdminPanel";
+import { AccountPanel } from "@/components/dashboard/AccountPanel";
+import { StatsPanel } from "@/components/dashboard/StatsPanel";
+import { TicketManagementPanel } from "@/components/dashboard/TicketManagementPanel";
 import { Loader2 } from "lucide-react";
 
-export type DashboardView = "tickets" | "admin";
+export type DashboardView = "tickets" | "admin" | "account" | "stats" | "ticket-management";
 
 export default function Dashboard() {
   const { staff, isLoading } = useStaff();
@@ -55,6 +58,9 @@ export default function Dashboard() {
           </>
         )}
 
+        {currentView === "account" && <AccountPanel />}
+        {currentView === "stats" && <StatsPanel />}
+        {currentView === "ticket-management" && staff.role === "admin" && <TicketManagementPanel />}
         {currentView === "admin" && staff.role === "admin" && <AdminPanel />}
       </main>
     </div>
