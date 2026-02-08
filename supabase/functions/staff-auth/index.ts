@@ -2,433 +2,185 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Simple password comparison for bcrypt hashes
-// Since we can't use bcrypt.compare in edge runtime, we'll use a workaround
-async function verifyBcryptPassword(password: string, hash: string): Promise<boolean> {
-  // Use Web Crypto API for comparison via a timing-safe approach
-  // For bcrypt hashes, we need to use the database function
-  return false; // Will use DB function instead
-}
+const json = (data: unknown, status = 200) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 
 serve(async (req) => {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    // Use the USER's Supabase, not Lovable Cloud's
     const supabase = createClient(
-      Deno.env.get('USER_SUPABASE_URL') ?? Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('USER_SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get("USER_SUPABASE_URL") ?? Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("USER_SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
     const { action, ...params } = await req.json();
     console.log(`Staff auth action: ${action}`);
 
     switch (action) {
-      case 'login': {
+      case "login": {
         const { username, password } = params;
-        
-        // Get staff member by username using service role
         const { data: staff, error } = await supabase
-          .from('staff')
-          .select('id, username, display_name, role, is_online, password_hash')
-          .eq('username', username)
+          .from("staff_members")
+          .select("*")
+          .eq("username", username)
           .single();
 
-        if (error || !staff) {
-          console.log('Login failed: user not found');
-          return new Response(
-            JSON.stringify({ error: 'Invalid credentials' }),
-            { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
+        if (error || !staff) return json({ error: "Invalid credentials" }, 401);
+        if (!staff.is_active) return json({ error: "Account is deactivated" }, 401);
+        if (staff.is_suspended)
+          return json({ error: `Account suspended: ${staff.suspension_reason || "Contact administrator"}` }, 401);
 
-        // Use database function to verify bcrypt password
-        const { data: verifyResult, error: verifyError } = await supabase
-          .rpc('verify_bcrypt_password', { 
-            password_attempt: password, 
-            password_hash: staff.password_hash 
-          });
+        const { data: valid } = await supabase.rpc("verify_bcrypt_password", {
+          password_attempt: password,
+          password_hash: staff.password_hash,
+        });
 
-        console.log('Password verify result:', verifyResult, 'error:', verifyError);
-        
-        if (verifyError || !verifyResult) {
-          console.log('Login failed: invalid password');
-          return new Response(
-            JSON.stringify({ error: 'Invalid credentials' }),
-            { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
+        if (!valid) return json({ error: "Invalid credentials" }, 401);
 
-        // Update online status
-        await supabase
-          .from('staff')
-          .update({ is_online: true, last_seen: new Date().toISOString() })
-          .eq('id', staff.id);
+        await supabase.from("staff_members").update({ status: "online" }).eq("id", staff.id);
 
-        // Get staff departments
-        const { data: staffDepts } = await supabase
-          .from('staff_departments')
-          .select('department_id, departments(id, name)')
-          .eq('staff_id', staff.id);
-
-        const departments = staffDepts?.map((sd: any) => ({
-          id: sd.departments?.id,
-          name: sd.departments?.name
-        })).filter((d: any) => d.id) || [];
-
-        // Return staff without password_hash
         const { password_hash, ...safeStaff } = staff;
-        console.log(`Login successful for: ${username}`);
-        
-        return new Response(
-          JSON.stringify({ staff: { ...safeStaff, departments } }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return json({ staff: safeStaff });
       }
 
-      case 'logout': {
+      case "logout": {
         const { staffId } = params;
-        
-        await supabase
-          .from('staff')
-          .update({ is_online: false, last_seen: new Date().toISOString() })
-          .eq('id', staffId);
-
-        console.log(`Logout successful for staff ID: ${staffId}`);
-        return new Response(
-          JSON.stringify({ success: true }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        await supabase.from("staff_members").update({ status: "offline" }).eq("id", staffId);
+        return json({ success: true });
       }
 
-      case 'create': {
-        const { username, password, displayName, role, departmentIds, createdBy } = params;
+      case "create": {
+        const { username, password, fullName, email, role, departments } = params;
 
-        // Check if username already exists
         const { data: existing } = await supabase
-          .from('staff')
-          .select('id')
-          .eq('username', username)
+          .from("staff_members")
+          .select("id")
+          .eq("username", username)
           .single();
+        if (existing) return json({ error: "Username already exists" }, 400);
 
-        if (existing) {
-          return new Response(
-            JSON.stringify({ error: 'Username already exists' }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
+        const { data: hash, error: hashErr } = await supabase.rpc("hash_bcrypt_password", {
+          password_text: password,
+        });
+        if (hashErr || !hash) return json({ error: "Failed to hash password" }, 500);
 
-        // Hash password using database function (bcrypt via pgcrypto)
-        const { data: hashResult, error: hashError } = await supabase
-          .rpc('hash_bcrypt_password', { password_text: password });
-        
-        if (hashError || !hashResult) {
-          console.error('Password hash error:', hashError);
-          return new Response(
-            JSON.stringify({ error: 'Failed to process password' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        // Create staff member (single role)
         const { data: newStaff, error } = await supabase
-          .from('staff')
+          .from("staff_members")
           .insert({
             username,
-            password_hash: hashResult,
-            display_name: displayName,
-            role,
-            created_by: createdBy,
+            password_hash: hash,
+            full_name: fullName,
+            email: email || null,
+            role: role || "agent",
+            departments: departments || [],
           })
-          .select('id, username, display_name, role, is_online, created_at')
+          .select(
+            "id, username, full_name, email, role, departments, status, is_active, is_suspended, is_oncall, total_chats_handled, total_rating, rating_count, created_at"
+          )
           .single();
 
         if (error) {
-          console.error('Create staff error:', error);
-          return new Response(
-            JSON.stringify({ error: 'Failed to create staff member' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+          console.error("Create error:", error);
+          return json({ error: "Failed to create staff" }, 500);
         }
-
-        // Add departments (multiple)
-        if (departmentIds && departmentIds.length > 0) {
-          const deptInserts = departmentIds.map((deptId: string) => ({
-            staff_id: newStaff.id,
-            department_id: deptId,
-          }));
-          await supabase.from('staff_departments').insert(deptInserts);
-        }
-
-        console.log(`Staff created: ${username}`);
-        return new Response(
-          JSON.stringify({ staff: newStaff }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return json({ staff: newStaff });
       }
 
-      case 'list': {
-        // Get all staff
-        const { data: staffList, error } = await supabase
-          .from('staff')
-          .select('id, username, display_name, role, is_online, created_at, created_by')
-          .order('created_at', { ascending: false });
+      case "list": {
+        const { data, error } = await supabase
+          .from("staff_members")
+          .select(
+            "id, username, full_name, email, role, departments, status, is_active, is_suspended, suspension_reason, is_oncall, total_chats_handled, total_rating, rating_count, created_at"
+          )
+          .order("created_at", { ascending: false });
 
-        if (error) {
-          console.error('List staff error:', error);
-          return new Response(
-            JSON.stringify({ error: 'Failed to fetch staff' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        // Get all staff departments
-        const { data: allDepts } = await supabase
-          .from('staff_departments')
-          .select('staff_id, department_id, departments(id, name)');
-
-        // Map departments to staff
-        const staffWithDepts = staffList?.map((s: any) => ({
-          ...s,
-          departments: allDepts?.filter((d: any) => d.staff_id === s.id).map((d: any) => ({
-            id: d.departments?.id,
-            name: d.departments?.name
-          })).filter((d: any) => d.id) || []
-        }));
-
-        return new Response(
-          JSON.stringify({ staff: staffWithDepts }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        if (error) return json({ error: "Failed to list staff" }, 500);
+        return json({ staff: data });
       }
 
-      case 'list-managers': {
-        // Get all managers for transfer functionality
-        const { data: managers, error } = await supabase
-          .from('staff')
-          .select('id, display_name, is_online')
-          .eq('role', 'manager');
-
-        if (error) {
-          console.error('List managers error:', error);
-          return new Response(
-            JSON.stringify({ error: 'Failed to fetch managers' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        return new Response(
-          JSON.stringify({ managers }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      case 'update': {
+      case "update": {
         const { staffId, updates } = params;
-        
-        // Don't allow updating password_hash directly
-        const { password_hash, departments, ...safeUpdates } = updates;
-
-        // Update staff record
-        if (Object.keys(safeUpdates).length > 0) {
-          const { error } = await supabase
-            .from('staff')
-            .update(safeUpdates)
-            .eq('id', staffId);
-
-          if (error) {
-            console.error('Update staff error:', error);
-            return new Response(
-              JSON.stringify({ error: 'Failed to update staff' }),
-              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            );
-          }
-        }
-
-        console.log(`Staff updated: ${staffId}`);
-        return new Response(
-          JSON.stringify({ success: true }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        const { password_hash, ...safe } = updates;
+        const { error } = await supabase.from("staff_members").update(safe).eq("id", staffId);
+        if (error) return json({ error: "Failed to update" }, 500);
+        return json({ success: true });
       }
 
-      case 'update-departments': {
-        const { staffId, departmentIds } = params;
-        
-        // Remove all existing departments
+      case "suspend": {
+        const { staffId, reason } = params;
         await supabase
-          .from('staff_departments')
-          .delete()
-          .eq('staff_id', staffId);
-
-        // Add new departments
-        if (departmentIds && departmentIds.length > 0) {
-          const deptInserts = departmentIds.map((deptId: string) => ({
-            staff_id: staffId,
-            department_id: deptId,
-          }));
-          await supabase.from('staff_departments').insert(deptInserts);
-        }
-
-        console.log(`Staff departments updated: ${staffId}`);
-        return new Response(
-          JSON.stringify({ success: true }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+          .from("staff_members")
+          .update({
+            is_suspended: true,
+            suspension_reason: reason || "Suspended by admin",
+            status: "offline",
+          })
+          .eq("id", staffId);
+        return json({ success: true });
       }
 
-      case 'change-password': {
+      case "unsuspend": {
+        const { staffId } = params;
+        await supabase
+          .from("staff_members")
+          .update({ is_suspended: false, suspension_reason: null })
+          .eq("id", staffId);
+        return json({ success: true });
+      }
+
+      case "change-password": {
         const { staffId, currentPassword, newPassword } = params;
-        
-        // Get current hash
-        const { data: staffData, error: fetchErr } = await supabase
-          .from('staff')
-          .select('password_hash')
-          .eq('id', staffId)
+        const { data: staff } = await supabase
+          .from("staff_members")
+          .select("password_hash")
+          .eq("id", staffId)
           .single();
+        if (!staff) return json({ error: "Staff not found" }, 404);
 
-        if (fetchErr || !staffData) {
-          return new Response(
-            JSON.stringify({ error: 'Staff not found' }),
-            { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
+        const { data: valid } = await supabase.rpc("verify_bcrypt_password", {
+          password_attempt: currentPassword,
+          password_hash: staff.password_hash,
+        });
+        if (!valid) return json({ error: "Current password is incorrect" }, 401);
 
-        // Verify current password
-        const { data: isValid } = await supabase
-          .rpc('verify_bcrypt_password', { 
-            password_attempt: currentPassword, 
-            password_hash: staffData.password_hash 
-          });
+        const { data: hash } = await supabase.rpc("hash_bcrypt_password", { password_text: newPassword });
+        if (!hash) return json({ error: "Failed to hash password" }, 500);
 
-        if (!isValid) {
-          return new Response(
-            JSON.stringify({ error: 'Current password is incorrect' }),
-            { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        // Hash new password
-        const { data: hashResult, error: hashError } = await supabase
-          .rpc('hash_bcrypt_password', { password_text: newPassword });
-        
-        if (hashError || !hashResult) {
-          return new Response(
-            JSON.stringify({ error: 'Failed to process password' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        const { error: updateErr } = await supabase
-          .from('staff')
-          .update({ password_hash: hashResult })
-          .eq('id', staffId);
-
-        if (updateErr) {
-          return new Response(
-            JSON.stringify({ error: 'Failed to update password' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        return new Response(
-          JSON.stringify({ success: true }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        await supabase.from("staff_members").update({ password_hash: hash }).eq("id", staffId);
+        return json({ success: true });
       }
 
-      case 'update-password': {
+      case "reset-password": {
         const { staffId, newPassword } = params;
-        
-        // Hash new password
-        const { data: hashResult, error: hashError } = await supabase
-          .rpc('hash_bcrypt_password', { password_text: newPassword });
-        
-        if (hashError || !hashResult) {
-          console.error('Password hash error:', hashError);
-          return new Response(
-            JSON.stringify({ error: 'Failed to process password' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        const { error } = await supabase
-          .from('staff')
-          .update({ password_hash: hashResult })
-          .eq('id', staffId);
-
-        if (error) {
-          console.error('Update password error:', error);
-          return new Response(
-            JSON.stringify({ error: 'Failed to update password' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        console.log(`Password updated for staff: ${staffId}`);
-        return new Response(
-          JSON.stringify({ success: true }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        const { data: hash } = await supabase.rpc("hash_bcrypt_password", { password_text: newPassword });
+        if (!hash) return json({ error: "Failed to hash password" }, 500);
+        await supabase.from("staff_members").update({ password_hash: hash }).eq("id", staffId);
+        return json({ success: true });
       }
 
-      case 'delete': {
+      case "delete": {
         const { staffId, requesterId } = params;
-        
-        // Prevent self-deletion
-        if (staffId === requesterId) {
-          return new Response(
-            JSON.stringify({ error: 'Cannot delete your own account' }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
+        if (staffId === requesterId) return json({ error: "Cannot delete your own account" }, 400);
 
-        // Clear ALL foreign key references first
-        await supabase.from('staff_departments').delete().eq('staff_id', staffId);
-        await supabase.from('ticket_notes').delete().eq('staff_id', staffId);
-        await supabase.from('messages').update({ sender_id: null }).eq('sender_id', staffId);
-        await supabase.from('tickets').update({ assigned_to: null }).eq('assigned_to', staffId);
-        await supabase.from('tickets').update({ referred_to: null }).eq('referred_to', staffId);
-        await supabase.from('affiliate_members').delete().eq('staff_id', staffId);
-
-        const { error } = await supabase
-          .from('staff')
-          .delete()
-          .eq('id', staffId);
-
-        if (error) {
-          console.error('Delete staff error:', error);
-          return new Response(
-            JSON.stringify({ error: 'Failed to delete staff' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        console.log(`Staff deleted: ${staffId}`);
-        return new Response(
-          JSON.stringify({ success: true }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        await supabase.from("chat_sessions").update({ assigned_to: null }).eq("assigned_to", staffId);
+        const { error } = await supabase.from("staff_members").delete().eq("id", staffId);
+        if (error) return json({ error: "Failed to delete" }, 500);
+        return json({ success: true });
       }
 
       default:
-        return new Response(
-          JSON.stringify({ error: 'Invalid action' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return json({ error: "Invalid action" }, 400);
     }
   } catch (error) {
-    console.error('Staff auth error:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    console.error("Staff auth error:", error);
+    return json({ error: "Internal server error" }, 500);
   }
 });

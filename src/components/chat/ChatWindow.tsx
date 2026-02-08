@@ -1,158 +1,85 @@
 import { useState, useEffect, useRef } from "react";
-import { Send, Loader2, ArrowLeft } from "lucide-react";
+import { Send, Loader2, ArrowLeft, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { userSupabase as supabase } from "@/lib/supabaseClient";
 import { cn } from "@/lib/utils";
+import type { ChatMessage, ChatSession } from "@/lib/types";
+import { DEPARTMENTS } from "@/lib/departments";
 
-interface Message {
-  id: string;
-  content: string;
-  sender_type: "visitor" | "staff";
-  created_at: string;
-}
-
-interface Department {
-  id: string;
-  name: string;
-  description: string | null;
-}
-
-interface IssueOption {
-  id: string;
-  label: string;
-  description: string;
-  departmentId: string;
-}
-
-type ChatStep = "welcome" | "name" | "issue" | "chat";
+type ChatStep = "welcome" | "name" | "issue" | "chat" | "rating" | "done";
 
 const STORAGE_KEY = "zenex_chat_session";
 
-interface ChatSession {
+interface StoredSession {
   step: ChatStep;
   visitorName: string;
-  ticketId: string | null;
-  sessionId: string;
-  selectedIssue: string | null;
+  chatId: string | null;
 }
 
 export function ChatWindow() {
   const [step, setStep] = useState<ChatStep>("welcome");
   const [visitorName, setVisitorName] = useState("");
-  const [departments, setDepartments] = useState<Department[]>([]);
-  const [ticketId, setTicketId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [chatId, setChatId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedIssue, setSelectedIssue] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const sessionId = useRef<string>(crypto.randomUUID());
+  const [rating, setRating] = useState(0);
   const [isRestoring, setIsRestoring] = useState(true);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Issue options mapped to departments
-  const issueOptions: IssueOption[] = [
-    {
-      id: "general",
-      label: "💬 General Question",
-      description: "I have a question about your services",
-      departmentId: "", // Will be filled with Customer Support ID
-    },
-    {
-      id: "billing",
-      label: "💳 Billing & Payments",
-      description: "Issues with payments, refunds, or invoices",
-      departmentId: "", // Client Relations
-    },
-    {
-      id: "technical",
-      label: "🔧 Technical Support",
-      description: "Something isn't working correctly",
-      departmentId: "", // Customer Support
-    },
-    {
-      id: "appeal",
-      label: "⚖️ Appeal a Decision",
-      description: "Contest a ban or account action",
-      departmentId: "", // Appeals Team
-    },
-    {
-      id: "legal",
-      label: "📋 Legal & Compliance",
-      description: "GDPR, data requests, legal matters",
-      departmentId: "", // Legal & Compliance
-    },
-    {
-      id: "partnership",
-      label: "🤝 Partnership Inquiry",
-      description: "Business partnerships or collaborations",
-      departmentId: "", // Client Relations
-    },
-  ];
-
-  // Restore session from localStorage
+  // Restore session
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
-        const session: ChatSession = JSON.parse(saved);
-        if (session.ticketId) {
-          setStep(session.step);
+        const session: StoredSession = JSON.parse(saved);
+        if (session.chatId) {
+          setStep(session.step === "rating" || session.step === "done" ? session.step : "chat");
           setVisitorName(session.visitorName);
-          setTicketId(session.ticketId);
-          sessionId.current = session.sessionId;
-          setSelectedIssue(session.selectedIssue);
+          setChatId(session.chatId);
         }
-      } catch (e) {
-        console.error("Failed to restore chat session:", e);
+      } catch {
+        localStorage.removeItem(STORAGE_KEY);
       }
     }
     setIsRestoring(false);
   }, []);
 
-  // Save session to localStorage
+  // Save session
   useEffect(() => {
     if (!isRestoring) {
-      const session: ChatSession = {
-        step,
-        visitorName,
-        ticketId,
-        sessionId: sessionId.current,
-        selectedIssue,
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ step, visitorName, chatId }));
+    }
+  }, [step, visitorName, chatId, isRestoring]);
+
+  // Fetch chat data + realtime
+  useEffect(() => {
+    if (chatId && !isRestoring) {
+      const fetchChat = async () => {
+        const { data } = await supabase
+          .from("chat_sessions")
+          .select("messages, status, rating")
+          .eq("id", chatId)
+          .single();
+        if (data) {
+          setMessages((data.messages || []) as ChatMessage[]);
+          if (data.status === "closed" && data.rating == null && step === "chat") setStep("rating");
+          if (data.rating != null) setStep("done");
+        }
       };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-    }
-  }, [step, visitorName, ticketId, selectedIssue, isRestoring]);
+      fetchChat();
 
-  useEffect(() => {
-    fetchDepartments();
-  }, []);
-
-  // Fetch messages when restoring a session
-  useEffect(() => {
-    if (ticketId && !isRestoring) {
-      fetchMessages();
-    }
-  }, [ticketId, isRestoring]);
-
-  useEffect(() => {
-    if (ticketId) {
       const channel = supabase
-        .channel(`messages:${ticketId}`)
+        .channel(`visitor-chat:${chatId}`)
         .on(
           "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "messages",
-            filter: `ticket_id=eq.${ticketId}`,
-          },
+          { event: "UPDATE", schema: "public", table: "chat_sessions", filter: `id=eq.${chatId}` },
           (payload) => {
-            const newMsg = payload.new as Message;
-            setMessages((prev) => {
-              if (prev.find((m) => m.id === newMsg.id)) return prev;
-              return [...prev, newMsg];
-            });
+            const updated = payload.new as ChatSession;
+            setMessages(updated.messages || []);
+            if (updated.status === "closed" && updated.rating == null && step === "chat")
+              setStep("rating");
           }
         )
         .subscribe();
@@ -161,114 +88,72 @@ export function ChatWindow() {
         supabase.removeChannel(channel);
       };
     }
-  }, [ticketId]);
+  }, [chatId, isRestoring]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const fetchDepartments = async () => {
-    const { data } = await supabase.from("departments").select("*");
-    if (data) setDepartments(data);
-  };
-
-  const fetchMessages = async () => {
-    if (!ticketId) return;
-    const { data: msgs } = await supabase
-      .from("messages")
-      .select("*")
-      .eq("ticket_id", ticketId)
-      .order("created_at", { ascending: true });
-    if (msgs) setMessages(msgs as Message[]);
-  };
-
-  const getDepartmentForIssue = (issueId: string): Department | null => {
-    const mapping: Record<string, string> = {
-      general: "Customer Support",
-      billing: "Client Relations Team",
-      technical: "Customer Support",
-      appeal: "Appeals Team",
-      legal: "Legal & Compliance Team",
-      partnership: "Client Relations Team",
-    };
-
-    const deptName = mapping[issueId];
-    return departments.find((d) => d.name.includes(deptName.split(" ")[0])) || departments[0] || null;
-  };
-
-  const startChat = async (issueId: string) => {
-    const dept = getDepartmentForIssue(issueId);
-    if (!dept) return;
-
-    setSelectedIssue(issueId);
+  const startChat = async (department: string) => {
     setIsLoading(true);
-
-    const issue = issueOptions.find((i) => i.id === issueId);
-    const subject = issue?.label.replace(/^[^\s]+\s/, "") || "General Inquiry";
-
     const { data, error } = await supabase
-      .from("tickets")
+      .from("chat_sessions")
       .insert({
         visitor_name: visitorName,
-        department_id: dept.id,
-        session_id: sessionId.current,
-        status: "open",
-        subject,
+        department,
+        status: "waiting",
+        messages: [
+          {
+            id: crypto.randomUUID(),
+            content: `Please explain your issue - an agent will be with you shortly.`,
+            sender_type: "staff",
+            sender_name: "System",
+            timestamp: new Date().toISOString(),
+          },
+        ],
       })
       .select()
       .single();
 
     if (!error && data) {
-      setTicketId(data.id);
+      setChatId(data.id);
+      setMessages(data.messages as ChatMessage[]);
       setStep("chat");
-
-      // Send welcome message
-      await supabase.from("messages").insert({
-        ticket_id: data.id,
-        sender_type: "staff",
-        content: `Hi ${visitorName}! 👋 Welcome to Zenex Support. You've reached us about "${subject}". A team member will be with you shortly. In the meantime, feel free to describe your issue in detail.`,
-      });
-
-      const { data: msgs } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("ticket_id", data.id)
-        .order("created_at", { ascending: true });
-
-      if (msgs) setMessages(msgs as Message[]);
     }
-
     setIsLoading(false);
   };
 
   const sendMessage = async () => {
-    if (!newMessage.trim() || !ticketId) return;
-
-    const content = newMessage.trim();
-    setNewMessage("");
-
-    await supabase.from("messages").insert({
-      ticket_id: ticketId,
+    if (!newMessage.trim() || !chatId) return;
+    const msg: ChatMessage = {
+      id: crypto.randomUUID(),
+      content: newMessage.trim(),
       sender_type: "visitor",
-      content,
-    });
+      sender_name: visitorName,
+      timestamp: new Date().toISOString(),
+    };
+    const updated = [...messages, msg];
+    setMessages(updated);
+    setNewMessage("");
+    await supabase
+      .from("chat_sessions")
+      .update({ messages: updated, updated_at: new Date().toISOString() })
+      .eq("id", chatId);
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+  const submitRating = async () => {
+    if (!chatId || rating === 0) return;
+    await supabase.from("chat_sessions").update({ rating }).eq("id", chatId);
+    setStep("done");
   };
 
   const handleNewChat = () => {
     localStorage.removeItem(STORAGE_KEY);
-    sessionId.current = crypto.randomUUID();
     setStep("welcome");
     setVisitorName("");
-    setTicketId(null);
+    setChatId(null);
     setMessages([]);
-    setSelectedIssue(null);
+    setRating(0);
   };
 
   if (isRestoring) {
@@ -283,18 +168,9 @@ export function ChatWindow() {
     return (
       <div className="p-6 space-y-4">
         <div className="text-center space-y-2">
-          <div className="w-16 h-16 rounded-2xl gradient-bg flex items-center justify-center mx-auto mb-4">
-            <span className="text-2xl">💬</span>
-          </div>
-          <h3 className="text-lg font-semibold">Welcome to Zenex Support</h3>
-          <p className="text-sm text-muted-foreground">
-            We're here to help! Start a conversation with our team.
-          </p>
+          <h3 className="text-lg font-semibold">Hi there! 👋 How can we help you today?</h3>
         </div>
-        <Button
-          className="w-full gradient-bg text-primary-foreground"
-          onClick={() => setStep("name")}
-        >
+        <Button className="w-full gradient-bg text-primary-foreground" onClick={() => setStep("name")}>
           Start Chat
         </Button>
       </div>
@@ -305,28 +181,29 @@ export function ChatWindow() {
     return (
       <div className="p-6 space-y-4">
         <div className="space-y-2">
-          <h3 className="text-lg font-semibold">What's your name?</h3>
-          <p className="text-sm text-muted-foreground">
-            So our team knows who they're talking to.
-          </p>
+          <h3 className="text-lg font-semibold">Great! What's your name so we can assist you better?</h3>
+          <p className="text-sm text-muted-foreground">Your Name</p>
         </div>
         <Input
           placeholder="Enter your name"
           value={visitorName}
           onChange={(e) => setVisitorName(e.target.value)}
-          onKeyPress={(e) => {
-            if (e.key === "Enter" && visitorName.trim()) {
-              setStep("issue");
-            }
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && visitorName.trim()) setStep("issue");
           }}
         />
-        <Button
-          className="w-full gradient-bg text-primary-foreground"
-          disabled={!visitorName.trim()}
-          onClick={() => setStep("issue")}
-        >
-          Continue
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" className="flex-1" onClick={() => setStep("welcome")}>
+            Back
+          </Button>
+          <Button
+            className="flex-1 gradient-bg text-primary-foreground"
+            disabled={!visitorName.trim()}
+            onClick={() => setStep("issue")}
+          >
+            Start Chat
+          </Button>
+        </div>
       </div>
     );
   }
@@ -334,27 +211,25 @@ export function ChatWindow() {
   if (step === "issue") {
     return (
       <div className="p-6 space-y-4">
-        <div className="space-y-2">
-          <h3 className="text-lg font-semibold">How can we help you?</h3>
-          <p className="text-sm text-muted-foreground">
-            Choose the option that best describes your issue.
+        <div className="space-y-1">
+          <p className="text-xs uppercase text-muted-foreground font-medium tracking-wider">
+            Select Inquiry
           </p>
         </div>
-        <div className="space-y-2 max-h-[280px] overflow-y-auto">
-          {issueOptions.map((issue) => (
+        <div className="space-y-2">
+          {DEPARTMENTS.map((dept) => (
             <button
-              key={issue.id}
-              onClick={() => startChat(issue.id)}
+              key={dept.id}
+              onClick={() => startChat(dept.id)}
               disabled={isLoading}
-              className="w-full p-3 text-left rounded-lg border border-border hover:border-primary hover:bg-muted/50 transition-all group"
+              className="w-full p-3 text-left rounded-lg border border-border hover:border-primary hover:bg-muted/50 transition-all"
             >
-              <span className="font-medium block">{issue.label}</span>
-              <span className="text-xs text-muted-foreground">{issue.description}</span>
+              <span className="font-medium">{dept.name}</span>
             </button>
           ))}
         </div>
         {isLoading && (
-          <div className="flex items-center justify-center py-4">
+          <div className="flex justify-center py-4">
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
           </div>
         )}
@@ -362,23 +237,63 @@ export function ChatWindow() {
     );
   }
 
+  if (step === "rating") {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center h-[400px] space-y-6">
+        <h3 className="text-lg font-bold">Rate Your Experience</h3>
+        <p className="text-sm text-muted-foreground">How was your support experience?</p>
+        <div className="flex gap-2">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              onClick={() => setRating(n)}
+              className="transition-transform hover:scale-110"
+            >
+              <Star
+                className={cn(
+                  "h-10 w-10",
+                  n <= rating ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground"
+                )}
+              />
+            </button>
+          ))}
+        </div>
+        <Button
+          className="w-full gradient-bg text-primary-foreground"
+          disabled={rating === 0}
+          onClick={submitRating}
+        >
+          Submit Rating
+        </Button>
+      </div>
+    );
+  }
+
+  if (step === "done") {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center h-[400px] space-y-4">
+        <h3 className="text-lg font-bold">Thank you! 🎉</h3>
+        <p className="text-sm text-muted-foreground">Your feedback helps us improve.</p>
+        <Button variant="outline" onClick={handleNewChat}>
+          Start New Chat
+        </Button>
+      </div>
+    );
+  }
+
+  // Chat step
   return (
     <div className="flex flex-col h-[400px]">
-      {/* Chat Header */}
       <div className="px-4 py-2 border-b border-border flex items-center justify-between">
         <button
           onClick={handleNewChat}
           className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
         >
-          <ArrowLeft className="h-3 w-3" />
-          New Chat
+          <ArrowLeft className="h-3 w-3" /> New Chat
         </button>
-        <span className="text-xs text-muted-foreground">
-          Chat with {visitorName}
-        </span>
+        <span className="text-xs text-muted-foreground">{visitorName}</span>
       </div>
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((msg) => (
           <div
@@ -392,7 +307,7 @@ export function ChatWindow() {
           >
             <p className="text-sm">{msg.content}</p>
             <span className="text-[10px] opacity-70 mt-1 block">
-              {new Date(msg.created_at).toLocaleTimeString([], {
+              {new Date(msg.timestamp).toLocaleTimeString([], {
                 hour: "2-digit",
                 minute: "2-digit",
               })}
@@ -402,22 +317,21 @@ export function ChatWindow() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
       <div className="p-4 border-t border-border">
         <div className="flex gap-2">
           <Input
             placeholder="Type a message..."
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            onKeyPress={handleKeyPress}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+              }
+            }}
             className="flex-1"
           />
-          <Button
-            size="icon"
-            className="gradient-bg"
-            onClick={sendMessage}
-            disabled={!newMessage.trim()}
-          >
+          <Button size="icon" className="gradient-bg" onClick={sendMessage} disabled={!newMessage.trim()}>
             <Send className="h-4 w-4 text-primary-foreground" />
           </Button>
         </div>

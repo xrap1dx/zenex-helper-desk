@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
-import { Staff, loginStaff, logoutStaff } from "@/lib/auth";
-import { userSupabase as supabase } from "@/lib/supabaseClient";
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import type { Staff } from "@/lib/types";
+import { loginStaff, logoutStaff } from "@/lib/auth";
 
 interface StaffContextType {
   staff: Staff | null;
@@ -11,64 +11,15 @@ interface StaffContextType {
 
 const StaffContext = createContext<StaffContextType | undefined>(undefined);
 
-const HEARTBEAT_INTERVAL = 30000; // 30 seconds
-
 export function StaffProvider({ children }: { children: ReactNode }) {
   const [staff, setStaff] = useState<Staff | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Heartbeat to update last_seen
-  useEffect(() => {
-    const updatePresence = async () => {
-      if (staff?.id) {
-        await supabase
-          .from("staff")
-          .update({ is_online: true, last_seen: new Date().toISOString() })
-          .eq("id", staff.id);
-      }
-    };
-
-    if (staff) {
-      // Initial update
-      updatePresence();
-      
-      // Set up interval
-      heartbeatRef.current = setInterval(updatePresence, HEARTBEAT_INTERVAL);
-      
-      // Handle visibility change
-      const handleVisibility = () => {
-        if (document.visibilityState === "visible") {
-          updatePresence();
-        }
-      };
-      document.addEventListener("visibilitychange", handleVisibility);
-
-      // Handle before unload - set offline
-      const handleUnload = () => {
-        if (staff?.id) {
-          // Use sendBeacon for reliability
-          const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/staff?id=eq.${staff.id}`;
-          const body = JSON.stringify({ is_online: false, last_seen: new Date().toISOString() });
-          navigator.sendBeacon(url, body);
-        }
-      };
-      window.addEventListener("beforeunload", handleUnload);
-
-      return () => {
-        if (heartbeatRef.current) clearInterval(heartbeatRef.current);
-        document.removeEventListener("visibilitychange", handleVisibility);
-        window.removeEventListener("beforeunload", handleUnload);
-      };
-    }
-  }, [staff?.id]);
 
   useEffect(() => {
-    // Check for stored session
-    const storedStaff = localStorage.getItem("zenex_staff");
-    if (storedStaff) {
+    const stored = localStorage.getItem("zenex_staff");
+    if (stored) {
       try {
-        setStaff(JSON.parse(storedStaff));
+        setStaff(JSON.parse(stored));
       } catch {
         localStorage.removeItem("zenex_staff");
       }
@@ -77,22 +28,15 @@ export function StaffProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (username: string, password: string): Promise<string | null> => {
-    const { staff: loggedInStaff, error } = await loginStaff(username, password);
-    
-    if (error || !loggedInStaff) {
-      return error || "Login failed";
-    }
-
-    setStaff(loggedInStaff);
-    localStorage.setItem("zenex_staff", JSON.stringify(loggedInStaff));
+    const { staff: s, error } = await loginStaff(username, password);
+    if (error || !s) return error || "Login failed";
+    setStaff(s);
+    localStorage.setItem("zenex_staff", JSON.stringify(s));
     return null;
   };
 
   const logout = async () => {
-    if (staff) {
-      await logoutStaff(staff.id);
-    }
-    if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+    if (staff) await logoutStaff(staff.id);
     setStaff(null);
     localStorage.removeItem("zenex_staff");
   };
@@ -105,9 +49,7 @@ export function StaffProvider({ children }: { children: ReactNode }) {
 }
 
 export function useStaff() {
-  const context = useContext(StaffContext);
-  if (context === undefined) {
-    throw new Error("useStaff must be used within a StaffProvider");
-  }
-  return context;
+  const ctx = useContext(StaffContext);
+  if (!ctx) throw new Error("useStaff must be within StaffProvider");
+  return ctx;
 }
