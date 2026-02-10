@@ -191,58 +191,6 @@ export type Database = {
           },
         ]
       }
-      ticket_notes: {
-        Row: {
-          content: string
-          created_at: string
-          id: string
-          metadata: Json | null
-          note_type: string
-          staff_id: string | null
-          ticket_id: string
-        }
-        Insert: {
-          content: string
-          created_at?: string
-          id?: string
-          metadata?: Json | null
-          note_type?: string
-          staff_id?: string | null
-          ticket_id: string
-        }
-        Update: {
-          content?: string
-          created_at?: string
-          id?: string
-          metadata?: Json | null
-          note_type?: string
-          staff_id?: string | null
-          ticket_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ticket_notes_staff_id_fkey"
-            columns: ["staff_id"]
-            isOneToOne: false
-            referencedRelation: "staff"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ticket_notes_staff_id_fkey"
-            columns: ["staff_id"]
-            isOneToOne: false
-            referencedRelation: "staff_public"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ticket_notes_ticket_id_fkey"
-            columns: ["ticket_id"]
-            isOneToOne: false
-            referencedRelation: "tickets"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       tickets: {
         Row: {
           assigned_to: string | null
@@ -252,14 +200,11 @@ export type Database = {
           id: string
           referred_to: string | null
           session_id: string
-          staff_typing: boolean
           status: Database["public"]["Enums"]["ticket_status"]
           subject: string | null
-          typing_updated_at: string | null
           updated_at: string
           visitor_email: string | null
           visitor_name: string
-          visitor_typing: boolean
         }
         Insert: {
           assigned_to?: string | null
@@ -269,14 +214,11 @@ export type Database = {
           id?: string
           referred_to?: string | null
           session_id: string
-          staff_typing?: boolean
           status?: Database["public"]["Enums"]["ticket_status"]
           subject?: string | null
-          typing_updated_at?: string | null
           updated_at?: string
           visitor_email?: string | null
           visitor_name: string
-          visitor_typing?: boolean
         }
         Update: {
           assigned_to?: string | null
@@ -286,14 +228,11 @@ export type Database = {
           id?: string
           referred_to?: string | null
           session_id?: string
-          staff_typing?: boolean
           status?: Database["public"]["Enums"]["ticket_status"]
           subject?: string | null
-          typing_updated_at?: string | null
           updated_at?: string
           visitor_email?: string | null
           visitor_name?: string
-          visitor_typing?: boolean
         }
         Relationships: [
           {

@@ -283,66 +283,6 @@ serve(async (req) => {
         );
       }
 
-      case 'change-password': {
-        const { staffId, currentPassword, newPassword } = params;
-        
-        // Get current hash
-        const { data: staffData, error: fetchErr } = await supabase
-          .from('staff')
-          .select('password_hash')
-          .eq('id', staffId)
-          .single();
-
-        if (fetchErr || !staffData) {
-          return new Response(
-            JSON.stringify({ error: 'Staff not found' }),
-            { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        // Verify current password
-        const { data: isValid } = await supabase
-          .rpc('verify_bcrypt_password', { 
-            password_attempt: currentPassword, 
-            password_hash: staffData.password_hash 
-          });
-
-        if (!isValid) {
-          return new Response(
-            JSON.stringify({ error: 'Current password is incorrect' }),
-            { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        // Hash new password
-        const { data: hashResult, error: hashError } = await supabase
-          .rpc('hash_bcrypt_password', { password_text: newPassword });
-        
-        if (hashError || !hashResult) {
-          return new Response(
-            JSON.stringify({ error: 'Failed to process password' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        const { error: updateErr } = await supabase
-          .from('staff')
-          .update({ password_hash: hashResult })
-          .eq('id', staffId);
-
-        if (updateErr) {
-          return new Response(
-            JSON.stringify({ error: 'Failed to update password' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        return new Response(
-          JSON.stringify({ success: true }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
       case 'update-password': {
         const { staffId, newPassword } = params;
         

@@ -5,12 +5,9 @@ import { Sidebar } from "@/components/dashboard/Sidebar";
 import { TicketList } from "@/components/dashboard/TicketList";
 import { TicketChat } from "@/components/dashboard/TicketChat";
 import { AdminPanel } from "@/components/dashboard/AdminPanel";
-import { AccountPanel } from "@/components/dashboard/AccountPanel";
-import { StatsPanel } from "@/components/dashboard/StatsPanel";
-import { TicketManagementPanel } from "@/components/dashboard/TicketManagementPanel";
 import { Loader2 } from "lucide-react";
 
-export type DashboardView = "tickets" | "admin" | "account" | "stats" | "ticket-management";
+export type DashboardView = "tickets" | "admin";
 
 export default function Dashboard() {
   const { staff, isLoading } = useStaff();
@@ -26,7 +23,7 @@ export default function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-background">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
@@ -37,30 +34,24 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="h-screen bg-background flex w-full overflow-hidden">
+    <div className="min-h-screen bg-background flex">
       <Sidebar
         currentView={currentView}
         onViewChange={setCurrentView}
         staffRole={staff.role}
       />
 
-      <main className="flex-1 flex min-w-0 overflow-hidden">
+      <main className="flex-1 flex">
         {currentView === "tickets" && (
           <>
             <TicketList
               selectedTicketId={selectedTicketId}
               onSelectTicket={setSelectedTicketId}
             />
-            <TicketChat 
-              ticketId={selectedTicketId} 
-              onTicketDeleted={() => setSelectedTicketId(null)}
-            />
+            <TicketChat ticketId={selectedTicketId} />
           </>
         )}
 
-        {currentView === "account" && <AccountPanel />}
-        {currentView === "stats" && <StatsPanel />}
-        {currentView === "ticket-management" && staff.role === "admin" && <TicketManagementPanel />}
         {currentView === "admin" && staff.role === "admin" && <AdminPanel />}
       </main>
     </div>
